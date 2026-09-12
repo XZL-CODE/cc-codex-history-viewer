@@ -23,10 +23,25 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 - 在概览顶部按 **Claude Code / Codex / 全部** 筛选，默认选择“全部”并在本机持久化选择。
 - 按工作目录浏览项目、Prompt 和会话；“全部”模式下相同 `cwd` 合并为一个项目。
 - 查看最近 Prompt、全局搜索、文件夹内搜索、完整会话、Markdown、工具调用和思考内容。
+- **全文搜索会话内容**：除 Prompt 外，还能按需扫描助手回复、思考摘要与工具调用参数，命中可跳转到对话中的具体消息并高亮关键词；不建索引、不落盘。
+- **对话详情**：助手回复按 Markdown 渲染并高亮代码；Bash/Edit/Write/Read/TodoWrite 与 Codex apply_patch 等工具调用按语义展示（命令、行级 diff、补丁、清单）；会话内查找、用户轮次大纲、全部展开/折叠、超长会话分批渲染。
+- **每会话 Token 与成本**：会话列表可按最新 / 成本 / 消息数 / 时长排序；fork/resume 复制的调用只计入原会话，各会话之和等于全局总量。
+- **统计范围与活跃度日历**：概览支持全部 / 近 7 天 / 近 30 天 / 本月 / 自定义区间，日历热力图补齐没有记录的日期。
 - Prompt、会话和导出内容保留 Claude Code 或 Codex 来源标识。
 - 统计每日活动、小时与星期分布、项目排行、模型、CLI 版本、Token、缓存命中率和估算成本。
-- 按文件 `mtime` 建立增量索引，并行扫描大历史库；JSONL 按行流式解析。
+- 按文件 `mtime` 建立增量索引，并行扫描大历史库；JSONL 按行流式解析。索引在后台线程构建并实时显示进度，刷新默认只重解析变化的文件，全量重建放在设置中。
+- 搜索是独立路由，返回键可回到结果列表；记住窗口位置与尺寸；主题可跟随系统。
 - 任一产品的数据目录不存在时，仍可正常浏览另一个产品的数据。
+
+### 快捷键
+
+| 快捷键 | 作用 |
+|---|---|
+| ⌘/Ctrl + K | 聚焦搜索框 |
+| Esc | 清空搜索并返回上一页 / 关闭设置 |
+| ⌘/Ctrl + R、F5 | 增量刷新本地数据 |
+| ⌘/Ctrl + , | 打开设置 |
+| ⌘/Ctrl + F（对话详情内） | 会话内查找，Enter / Shift+Enter 切换命中 |
 
 ### 数据路径
 
@@ -140,6 +155,8 @@ cacheRead / (uncachedInput + cacheRead)
 
 分母为 0 时显示“—”。概览、按天、按模型和按项目的总 Token 均使用同一公式。
 
+每个会话的 Token 与成本按同一去重规则归属：按会话开始时间顺序，一条调用首次出现在哪个会话就计入哪个会话，fork/resume 复制的历史调用只计入原会话；Claude 子代理的调用并入父会话。因此各会话之和等于全局总量。
+
 ### 成本说明
 
 成本按产品和可靠匹配的具体模型分别估算。Codex 成本显示为 **API 等价估算**，仅表示按对应 OpenAI API 标准 Token 单价换算的参考值，不代表 ChatGPT 或 Codex 订阅的实际账单、额度或积分消耗。
@@ -152,13 +169,20 @@ cacheRead / (uncachedInput + cacheRead)
 
 缓存写在本应用的系统数据目录，不写入 `~/.claude` 或 `~/.codex`。缓存是本地派生数据，可能含解析后的 Prompt、消息摘要和用量；它与原始历史一样应按敏感数据保护。
 
+索引在后台线程构建，构建期间界面显示扫描与解析进度，其他查询等待同一次构建完成。顶栏刷新按钮与 ⌘/Ctrl+R 只重解析指纹变化的文件；设置中的“全量重建”忽略缓存重新解析全部文件。重建期间旧索引继续可用。
+
+### 全文搜索
+
+搜索页的“会话内容”模式不建立任何索引：每次搜索并行流式扫描当前筛选范围内的会话文件，先用大小写不敏感的字节子串预筛原始行，只解析命中的行。覆盖用户消息、助手回复、思考摘要与工具调用参数；工具结果正文（文件内容、命令输出）不参与匹配，developer/system 与 `AGENTS.md` 等注入内容也不会命中。多个关键词需同时出现在同一条消息中。每个会话最多返回 20 条、总计最多 300 条，超出时提示缩小范围。
+
 ### 隐私边界
 
 - 不读取 Codex `auth.json`。
 - 不把 Codex 私有 SQLite 表作为主要数据源。
 - 不联网、不上传、不遥测历史内容。
 - 不修改或删除 `~/.claude`、`~/.codex` 及自定义数据目录中的任何内容。
-- 应用只写自身设置、索引缓存，以及用户主动导出的 Markdown 文件。
+- 应用只写自身设置、索引缓存、窗口位置状态，以及用户主动导出的 Markdown 文件；全文搜索按需读取会话文件，不写任何索引。
+- 对话里的链接只在用户点击时交给系统浏览器打开，应用本身不发起任何网络请求。
 
 ### 开发与验证
 
@@ -176,6 +200,7 @@ cd src-tauri
 cargo fmt --check
 cargo test
 cd ..
+pnpm exec tsc --noEmit
 pnpm build
 ```
 
@@ -192,10 +217,25 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - Filter the overview by **Claude Code / Codex / All**. All is the default and the choice is persisted locally.
 - Browse projects, prompts, and sessions by working directory. In All mode, an identical `cwd` is one project.
 - View recent prompts, global and folder search, full conversations, Markdown, tool calls, and thinking content.
+- **Full-text conversation search**: beyond prompts, scan assistant replies, thinking summaries, and tool-call inputs on demand; hits jump to the exact message with keywords highlighted. No index is built or written.
+- **Conversation view**: assistant replies render as Markdown with syntax-highlighted code; Bash/Edit/Write/Read/TodoWrite and Codex apply_patch calls render semantically (commands, line diffs, patches, checklists); in-conversation find, a user-turn outline, expand/collapse all, and batched rendering for very long sessions.
+- **Per-session tokens and cost**: sort sessions by newest, cost, messages, or duration; calls copied by fork/resume count only in the original session, so session totals add up to the global totals.
+- **Time range and activity calendar**: scope the overview to all time, last 7 / 30 days, this month, or a custom range; a calendar heatmap fills in days without records.
 - Preserve the Claude Code or Codex identity on prompts, sessions, and exports.
 - Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
-- Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache.
+- Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache. The index builds on a background thread with live progress; refresh re-parses only changed files, and a full rebuild lives in Settings.
+- Search is its own route so the back button returns to results; window position and size are remembered; the theme can follow the system.
 - Continue working when either product's data directory is absent.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| ⌘/Ctrl + K | Focus the search box |
+| Esc | Clear the search and go back / close Settings |
+| ⌘/Ctrl + R, F5 | Incrementally refresh local data |
+| ⌘/Ctrl + , | Open Settings |
+| ⌘/Ctrl + F (in a conversation) | Find in conversation; Enter / Shift+Enter move between hits |
 
 ### Data paths and precedence
 
@@ -253,13 +293,19 @@ reasoningOutput = reasoning_output_tokens
 
 Codex `input_tokens` already includes cached input. Copied fork/resume usage is removed with a stable event fingerprint independent of file path and a new session ID. Cache hit rate is `cacheRead / (uncachedInput + cacheRead)` and displays “—” for a zero denominator.
 
+Per-session usage follows the same deduplication: sessions are visited in start-time order and each call counts in the first session that recorded it, so fork/resume copies stay with the original session and Claude sub-agent calls roll up into their parent session. Session totals therefore add up to the global totals.
+
 ### Cost, cache, and privacy
 
 Codex cost is labelled an **API-equivalent estimate**. It is a reference conversion using reliably matched OpenAI API token prices, not an actual ChatGPT/Codex subscription charge, allowance, or credit balance. Unknown models display “—”; combined totals include known estimated cost and disclose how many tokens have unknown pricing. Built-in rates were checked on 2026-07-17 against [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and official OpenAI model pages such as [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max), [o4-mini](https://developers.openai.com/api/docs/models/o4-mini), and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).
 
 Cache schema **v5** is agent-aware and stores per-file parsed results keyed by product and file identity. Unchanged `mtime` and file-length fingerprints are reused; changed, added, removed, reconfigured, or old-schema entries are rebuilt. The cache lives in this application's data directory and may contain derived prompt text, summaries, and usage.
 
-The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never writes or deletes data under Claude/Codex roots. It writes only its own settings, index cache, and Markdown files explicitly exported by the user.
+The index builds on a background thread and reports progress while other queries wait for the same build. The toolbar refresh and ⌘/Ctrl+R re-parse only files whose fingerprint changed; the full rebuild in Settings ignores the cache. The previous index stays available while a rebuild runs.
+
+Full-text conversation search builds no index: each search streams the session files in the current scope in parallel, prefilters raw lines with a case-insensitive byte search, and parses only matching lines. It covers user messages, assistant replies, thinking summaries, and tool-call inputs; tool results (file contents, command output) and injected developer/system or `AGENTS.md` context never match. Every keyword must appear in the same message. At most 20 hits per session and 300 in total are returned, with a notice when results are truncated.
+
+The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never writes or deletes data under Claude/Codex roots. It writes only its own settings, index cache, window state, and Markdown files explicitly exported by the user. Links inside conversations open in the system browser only when clicked.
 
 ### Development and release checks
 
@@ -271,6 +317,7 @@ cd src-tauri
 cargo fmt --check
 cargo test
 cd ..
+pnpm exec tsc --noEmit
 pnpm build
 ```
 
