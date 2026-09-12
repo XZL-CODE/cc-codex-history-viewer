@@ -90,6 +90,23 @@ pub struct SearchResult {
     pub match_ranges: Vec<[usize; 2]>,
 }
 
+/// Token usage attributed to one session. Copied fork/resume events count once, in the earliest
+/// session that recorded them, so session totals add up to the global totals.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUsage {
+    pub uncached_input: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub output: u64,
+    pub reasoning_output: u64,
+    pub total_tokens_including_cache: u64,
+    /// Known-model API-equivalent cost only.
+    pub est_cost_usd: f64,
+    pub unknown_model_tokens: u64,
+    pub assistant_messages: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
@@ -105,6 +122,8 @@ pub struct SessionSummary {
     /// Codex session_meta.source (or `cli` for Claude data).
     pub source: Option<String>,
     pub models: Vec<String>,
+    #[serde(default)]
+    pub usage: SessionUsage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +139,9 @@ pub struct ConversationDetail {
     pub source: Option<String>,
     pub models: Vec<String>,
     pub messages: Vec<ChatMessage>,
+    /// Filled from the index after parsing; parsers leave it at the default.
+    #[serde(default)]
+    pub usage: SessionUsage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

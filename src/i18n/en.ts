@@ -17,6 +17,10 @@ export const en: Record<keyof typeof zh, string> = {
   retry: "Retry",
   dismiss: "Dismiss",
   openSettings: "Open settings",
+  durationSeconds: "{s} s",
+  durationMinutes: "{m} min",
+  durationHoursMinutes: "{h} h {m} min",
+  durationDays: "{d} d {h} h",
   unitItems: "prompts",
   dayLabelFormat: "MMM d, yyyy",
   agentClaude: "Claude Code",
@@ -190,6 +194,10 @@ export const en: Record<keyof typeof zh, string> = {
   sortOldest: "Oldest",
   sortLongest: "Longest",
   messagesCount: "{count} messages",
+  sortByCost: "Cost",
+  sortByMessages: "Messages",
+  sortByDuration: "Duration",
+  tokensUnit: "{value} tokens",
   untitledSession: "(no user messages)",
   noPromptsInFolder: "No prompts in this folder",
   noPromptsInFolderHint:
@@ -221,6 +229,8 @@ export const en: Record<keyof typeof zh, string> = {
   noMessagesInSession: "No displayable messages in this session",
   conversationModels: "Models: {models}",
   conversationSource: "Source: {source}",
+  conversationUsage: "{tokens} tokens · est. cost {cost} · {messages} assistant messages",
+  conversationDuration: "Duration {duration}",
 
   /* ----------------------------- 导出页 Export ----------------------------- */
   exportIntroPrefix:

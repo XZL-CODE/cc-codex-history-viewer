@@ -443,6 +443,20 @@ pub fn build_conversation_markdown(
         label("消息数", "Messages"),
         detail.messages.len()
     ));
+    if detail.usage.total_tokens_including_cache > 0 {
+        md.push_str(&format!(
+            "> **{}**　{}\n",
+            label("Token（含缓存）", "Tokens (incl. cache)"),
+            detail.usage.total_tokens_including_cache
+        ));
+        if detail.usage.unknown_model_tokens < detail.usage.total_tokens_including_cache {
+            md.push_str(&format!(
+                "> **{}**　${:.2}\n",
+                label("API 等价估算成本", "API-equivalent estimated cost"),
+                detail.usage.est_cost_usd
+            ));
+        }
+    }
     md.push_str(&format!(
         "> **{}**　`{}`\n\n---\n\n",
         label("会话 ID", "Session ID"),
@@ -781,6 +795,7 @@ mod tests {
                     blocks: vec![text_block("已完成")],
                 },
             ],
+            usage: crate::models::SessionUsage::default(),
         };
 
         // 不含工具：纯工具消息整条消失

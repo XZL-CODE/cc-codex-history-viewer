@@ -1,6 +1,8 @@
 //! JSONL 数据解析：history.jsonl 与 projects/**/*.jsonl。
 
-use crate::models::{Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage};
+use crate::models::{
+    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, SessionUsage,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -604,6 +606,7 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
             models
         },
         messages,
+        usage: SessionUsage::default(),
     })
 }
 

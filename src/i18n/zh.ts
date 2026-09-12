@@ -16,6 +16,10 @@ export const zh = {
   retry: "重试",
   dismiss: "关闭提示",
   openSettings: "打开设置",
+  durationSeconds: "{s} 秒",
+  durationMinutes: "{m} 分钟",
+  durationHoursMinutes: "{h} 小时 {m} 分",
+  durationDays: "{d} 天 {h} 小时",
   /** 图表 tooltip 的计数单位（"123 条" / "123 prompts"） */
   unitItems: "条",
   /** dayLabel 的 date-fns 格式串（非 UI 文案，但随语言切换） */
@@ -185,6 +189,10 @@ export const zh = {
   sortOldest: "最早",
   sortLongest: "最长",
   messagesCount: "{count} 条消息",
+  sortByCost: "成本",
+  sortByMessages: "消息数",
+  sortByDuration: "时长",
+  tokensUnit: "{value} tokens",
   untitledSession: "（无 user 消息）",
   noPromptsInFolder: "该文件夹下暂无 prompt",
   noPromptsInFolderHint: "若只剩斜杠命令，可在顶栏开启「命令」按钮查看。",
@@ -215,6 +223,8 @@ export const zh = {
   noMessagesInSession: "该会话没有可显示的消息",
   conversationModels: "模型：{models}",
   conversationSource: "来源：{source}",
+  conversationUsage: "Token {tokens} · 估算成本 {cost} · 助手消息 {messages} 条",
+  conversationDuration: "时长 {duration}",
 
   /* ----------------------------- 导出页 Export ----------------------------- */
   exportIntroPrefix:

@@ -252,18 +252,30 @@ pub async fn get_project_sessions(
 }
 
 /// 按 (agent, sessionId) 找到对话文件路径
-async fn session_file(
-    state: &AppState,
-    app: &AppHandle,
-    agent: Agent,
-    session_id: &str,
-) -> Result<String, String> {
-    let index = ensure_index(state, app).await?;
+fn lookup_session_file(index: &AppIndex, agent: Agent, session_id: &str) -> Result<String, String> {
     index
         .session_files
         .get(&(agent, session_id.to_string()))
         .cloned()
         .ok_or_else(|| format!("Conversation not found: {}:{session_id}", agent.as_str()))
+}
+
+/// 解析会话详情并附上索引中归属该会话的用量。
+async fn load_conversation(
+    state: &AppState,
+    app: &AppHandle,
+    agent: Agent,
+    session_id: &str,
+) -> Result<ConversationDetail, String> {
+    let index = ensure_index(state, app).await?;
+    let file = lookup_session_file(&index, agent, session_id)?;
+    let mut detail = parse_detail(agent, file).await?;
+    detail.usage = index
+        .session_usage
+        .get(&(agent, session_id.to_string()))
+        .cloned()
+        .unwrap_or_default();
+    Ok(detail)
 }
 
 /// 在阻塞线程池中解析单个会话文件的完整内容
@@ -286,8 +298,7 @@ pub async fn get_conversation(
     app: AppHandle,
 ) -> Result<ConversationDetail, String> {
     let agent = agent.unwrap_or(Agent::Claude);
-    let file = session_file(&state, &app, agent, &session_id).await?;
-    parse_detail(agent, file).await
+    load_conversation(&state, &app, agent, &session_id).await
 }
 
 /// 索引元信息
@@ -515,8 +526,7 @@ pub async fn export_conversation(
     app: AppHandle,
 ) -> Result<ConversationExportResult, String> {
     let agent = agent.unwrap_or(Agent::Claude);
-    let file = session_file(&state, &app, agent, &session_id).await?;
-    let detail = parse_detail(agent, file).await?;
+    let detail = load_conversation(&state, &app, agent, &session_id).await?;
     let lang = Lang::from_opt(lang.as_deref());
     let markdown = export::build_conversation_markdown(&detail, include_tools, lang);
 

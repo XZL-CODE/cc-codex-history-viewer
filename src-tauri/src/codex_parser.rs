@@ -1,6 +1,8 @@
 //! Streaming parser adapter for OpenAI Codex history and rollout JSONL files.
 
-use crate::models::{Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage};
+use crate::models::{
+    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, SessionUsage,
+};
 use crate::parser::{
     clip, for_each_jsonl_line, stable_hash, ConvFileResult, RawPrompt, UsageEntry,
 };
@@ -727,6 +729,7 @@ pub fn parse_rollout_detail(path: &Path) -> Option<ConversationDetail> {
         source: result.source,
         models: result.models,
         messages,
+        usage: SessionUsage::default(),
     })
 }
 

@@ -22,6 +22,8 @@ pub struct AppIndex {
     pub prompts: Vec<PromptEntry>,
     pub sessions: Vec<SessionSummary>,
     pub session_files: HashMap<(Agent, String), String>,
+    /// Usage attributed per (agent, session id); see [`attribute_session_usage`].
+    pub session_usage: HashMap<(Agent, String), SessionUsage>,
     projects_all: Vec<ProjectInfo>,
     projects_claude: Vec<ProjectInfo>,
     projects_codex: Vec<ProjectInfo>,
@@ -388,7 +390,8 @@ fn assemble_index(
 
     let mut prompts = merge_prompts(histories, &conv);
     let winners = session_winners(paths, &conv);
-    let sessions = build_sessions(&winners);
+    let session_usage = attribute_session_usage(&conv);
+    let sessions = build_sessions(&winners, &session_usage);
     let session_files = winners
         .iter()
         .map(|result| {
@@ -442,6 +445,7 @@ fn assemble_index(
         prompts,
         sessions,
         session_files,
+        session_usage,
         projects_all,
         projects_claude,
         projects_codex,
@@ -660,7 +664,10 @@ fn session_winners<'a>(paths: &DataPaths, conv: &'a [ConvFileResult]) -> Vec<&'a
     values
 }
 
-fn build_sessions(conv: &[&ConvFileResult]) -> Vec<SessionSummary> {
+fn build_sessions(
+    conv: &[&ConvFileResult],
+    usage: &HashMap<(Agent, String), SessionUsage>,
+) -> Vec<SessionSummary> {
     let mut sessions: Vec<SessionSummary> = conv
         .iter()
         .filter(|result| !result.is_subagent)
@@ -676,6 +683,10 @@ fn build_sessions(conv: &[&ConvFileResult]) -> Vec<SessionSummary> {
             cli_version: result.version.clone(),
             source: result.source.clone(),
             models: result.models.clone(),
+            usage: usage
+                .get(&(result.agent, result.session_id.clone()))
+                .cloned()
+                .unwrap_or_default(),
         })
         .collect();
     sessions.sort_by(|left, right| {
@@ -941,6 +952,76 @@ impl UsageAggregate {
             }
         }
     }
+
+    fn into_session_usage(self) -> SessionUsage {
+        SessionUsage {
+            uncached_input: self.usage.uncached_input,
+            cache_read: self.usage.cache_read,
+            cache_creation: self.usage.cache_creation,
+            output: self.usage.output,
+            reasoning_output: self.usage.reasoning_output,
+            total_tokens_including_cache: self.usage.total_tokens_including_cache(),
+            est_cost_usd: self.cost,
+            unknown_model_tokens: self.unknown_tokens,
+            assistant_messages: self.messages,
+        }
+    }
+}
+
+/// The session that owns a file's usage: Claude sub-agent transcripts live under
+/// `<parent session id>/subagents/`, so their calls roll up into the parent session.
+fn owner_session_id(result: &ConvFileResult) -> String {
+    if result.agent == Agent::Claude && result.is_subagent {
+        let components: Vec<&std::ffi::OsStr> = result
+            .path
+            .components()
+            .map(|component| component.as_os_str())
+            .collect();
+        if let Some(position) = components
+            .iter()
+            .position(|component| *component == "subagents")
+        {
+            if let Some(parent) = position
+                .checked_sub(1)
+                .and_then(|index| components[index].to_str())
+                .filter(|parent| !parent.is_empty())
+            {
+                return parent.to_string();
+            }
+        }
+    }
+    result.session_id.clone()
+}
+
+/// Attribute every unique usage event to exactly one session. Files are visited from the
+/// earliest session onwards, so events copied into a later fork/resume stay with the original.
+fn attribute_session_usage(conv: &[ConvFileResult]) -> HashMap<(Agent, String), SessionUsage> {
+    let mut ordered: Vec<&ConvFileResult> = conv.iter().collect();
+    ordered.sort_by(|left, right| {
+        left.started_at
+            .cmp(&right.started_at)
+            .then_with(|| left.agent.cmp(&right.agent))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let mut seen: HashSet<(Agent, &str)> = HashSet::new();
+    let mut aggregates: HashMap<(Agent, String), UsageAggregate> = HashMap::new();
+    for result in ordered {
+        let owner = owner_session_id(result);
+        for event in &result.usage_entries {
+            if !seen.insert((event.agent, event.dedup_key.as_str())) {
+                continue;
+            }
+            let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
+            aggregates
+                .entry((result.agent, owner.clone()))
+                .or_default()
+                .add(event, cost);
+        }
+    }
+    aggregates
+        .into_iter()
+        .map(|(key, aggregate)| (key, aggregate.into_session_usage()))
+        .collect()
 }
 
 fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
@@ -1294,6 +1375,98 @@ mod tests {
         let results = search(&prompts, "foo bar", None, true, AgentFilter::Codex);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry.agent, Agent::Codex);
+    }
+
+    fn conv_with_usage(
+        session_id: &str,
+        path: &str,
+        started_at: i64,
+        is_subagent: bool,
+        keys: &[&str],
+    ) -> ConvFileResult {
+        ConvFileResult {
+            agent: Agent::Claude,
+            path: PathBuf::from(path),
+            session_id: session_id.to_string(),
+            project: Some("/synthetic/project".to_string()),
+            git_branch: None,
+            version: None,
+            source: Some("cli".to_string()),
+            models: vec!["claude-sonnet-4-5".to_string()],
+            is_subagent,
+            started_at,
+            ended_at: started_at + 1_000,
+            message_count: keys.len(),
+            first_prompt: String::new(),
+            user_prompts: Vec::new(),
+            usage_entries: keys
+                .iter()
+                .map(|key| UsageEntry {
+                    agent: Agent::Claude,
+                    dedup_key: (*key).to_string(),
+                    model: "claude-sonnet-4-5".to_string(),
+                    timestamp: started_at,
+                    project: "/synthetic/project".to_string(),
+                    usage: NormalizedUsage {
+                        uncached_input: 100,
+                        cache_read: 50,
+                        cache_creation: 10,
+                        output: 20,
+                        reasoning_output: 0,
+                    },
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn session_usage_counts_copied_events_once_and_rolls_subagents_into_parent() {
+        let original = conv_with_usage(
+            "orig",
+            "/synthetic/projects/p/orig.jsonl",
+            100,
+            false,
+            &["k1", "k2"],
+        );
+        let resumed = conv_with_usage(
+            "resumed",
+            "/synthetic/projects/p/resumed.jsonl",
+            200,
+            false,
+            &["k1", "k2", "k3"],
+        );
+        let subagent = conv_with_usage(
+            "agent-1",
+            "/synthetic/projects/p/orig/subagents/agent-1.jsonl",
+            150,
+            true,
+            &["k4"],
+        );
+        let conv = vec![resumed, subagent, original];
+        let usage = attribute_session_usage(&conv);
+
+        let orig = &usage[&(Agent::Claude, "orig".to_string())];
+        assert_eq!(orig.assistant_messages, 3, "k1, k2 and the sub-agent's k4");
+        assert_eq!(orig.total_tokens_including_cache, 3 * 180);
+        assert!(orig.est_cost_usd > 0.0);
+        assert_eq!(orig.unknown_model_tokens, 0);
+        let resumed = &usage[&(Agent::Claude, "resumed".to_string())];
+        assert_eq!(resumed.assistant_messages, 1, "only the new k3 call");
+        assert!(!usage.contains_key(&(Agent::Claude, "agent-1".to_string())));
+
+        let global = compute_usage(&conv, AgentFilter::All);
+        let session_sum: u64 = usage
+            .values()
+            .map(|entry| entry.total_tokens_including_cache)
+            .sum();
+        assert_eq!(session_sum, global.total_tokens_including_cache);
+        assert_eq!(
+            usage
+                .values()
+                .map(|entry| entry.assistant_messages)
+                .sum::<usize>(),
+            global.assistant_messages
+        );
     }
 
     #[test]

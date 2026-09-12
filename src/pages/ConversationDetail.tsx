@@ -30,7 +30,10 @@ import {
   absoluteTime,
   cn,
   encodePath,
+  formatDuration,
   formatNumber,
+  formatTokens,
+  formatUsageCost,
   prettyPath,
 } from "@/lib/utils";
 import { api, errMessage } from "@/lib/api";
@@ -372,6 +375,28 @@ export function ConversationDetail() {
               <span>
                 · {t("messagesCount", { count: formatNumber(data.messages.length) })}
               </span>
+              {data.endedAt > data.startedAt && (
+                <span>
+                  ·{" "}
+                  {t("conversationDuration", {
+                    duration: formatDuration(data.endedAt - data.startedAt),
+                  })}
+                </span>
+              )}
+              {data.usage.totalTokensIncludingCache > 0 && (
+                <span
+                  title={t("tokenTotalSuffix", {
+                    value: formatNumber(data.usage.totalTokensIncludingCache),
+                  })}
+                >
+                  ·{" "}
+                  {t("conversationUsage", {
+                    tokens: formatTokens(data.usage.totalTokensIncludingCache),
+                    cost: formatUsageCost(data.usage),
+                    messages: formatNumber(data.usage.assistantMessages),
+                  })}
+                </span>
+              )}
             </div>
           </div>
 

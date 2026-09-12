@@ -49,6 +49,7 @@ export interface SessionSummary {
   cliVersion: string | null;
   source: string | null;
   models: string[];
+  usage: SessionUsage;
 }
 
 export type BlockKind =
@@ -87,6 +88,7 @@ export interface ConversationDetail {
   source: string | null;
   models: string[];
   messages: ChatMessage[];
+  usage: SessionUsage;
 }
 
 export interface DayCount {
@@ -146,6 +148,12 @@ export interface UsageStats extends TokenUsageFields {
   byModel: ModelUsage[];
   byDay: DayUsage[];
   byProject: ProjectUsage[];
+}
+
+/** 归属到单个会话的用量；fork/resume 复制的调用只计入最早的会话 */
+export interface SessionUsage extends Omit<TokenUsageFields, "estCostUsd"> {
+  estCostUsd: number;
+  assistantMessages: number;
 }
 
 export interface AppStats {
