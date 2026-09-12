@@ -142,6 +142,23 @@ export function useExportPreview(params: {
   });
 }
 
+/** 全文搜索会话内容。扫描较重，用更长的防抖，并且只在启用时执行。 */
+export function useConversationSearch(
+  query: string,
+  projectFilter: string | null,
+  agentFilter: AgentFilter,
+  enabled: boolean
+) {
+  const debounced = useDebounce(query.trim(), 600);
+  const result = useQuery({
+    queryKey: ["conversation-search", debounced, projectFilter, agentFilter],
+    queryFn: () => api.searchConversations(debounced, projectFilter, agentFilter),
+    enabled: enabled && debounced.length > 0,
+    staleTime: 60 * 1000,
+  });
+  return { ...result, debouncedQuery: debounced };
+}
+
 export function useSearch(
   query: string,
   projectFilter: string | null,

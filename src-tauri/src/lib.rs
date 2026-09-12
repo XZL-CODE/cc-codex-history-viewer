@@ -1,6 +1,7 @@
 // 模块声明为 pub：tests/ 下的集成测试（golden 测试）需要访问 parser 等模块。
 pub mod codex_parser;
 pub mod commands;
+pub mod content_search;
 pub mod export;
 pub mod indexer;
 pub mod models;
@@ -22,6 +23,7 @@ pub fn run() {
             commands::get_project_prompts,
             commands::get_recent_prompts,
             commands::search_prompts,
+            commands::search_conversations,
             commands::get_stats,
             commands::get_project_sessions,
             commands::get_conversation,

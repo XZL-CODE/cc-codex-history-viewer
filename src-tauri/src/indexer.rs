@@ -1274,7 +1274,7 @@ fn collect_claude_session_versions(directory: &Path) -> Vec<String> {
 
 // ----------------------------- Search -----------------------------
 
-fn fold_char(character: char) -> char {
+pub(crate) fn fold_char(character: char) -> char {
     character.to_lowercase().next().unwrap_or(character)
 }
 
@@ -1326,7 +1326,7 @@ pub fn search(
     results
 }
 
-fn find_all(haystack: &[char], needle: &[char]) -> Vec<usize> {
+pub(crate) fn find_all(haystack: &[char], needle: &[char]) -> Vec<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return Vec::new();
     }
@@ -1343,7 +1343,7 @@ fn find_all(haystack: &[char], needle: &[char]) -> Vec<usize> {
     matches
 }
 
-fn merge_ranges(mut ranges: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
+pub(crate) fn merge_ranges(mut ranges: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
     ranges.sort();
     let mut merged: Vec<[usize; 2]> = Vec::new();
     for range in ranges {

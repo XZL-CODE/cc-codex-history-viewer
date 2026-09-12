@@ -67,6 +67,20 @@ export const en: Record<keyof typeof zh, string> = {
   noMatchingPromptsHint:
     "Try different keywords. Multiple words (space-separated) must all match.",
   exportSearchResults: "Export results",
+  searchModeLabel: "Search mode",
+  searchModePrompts: "Prompts",
+  searchModeContent: "Conversation content",
+  contentScanning: "Scanning session files…",
+  contentScanningHint: "Full-text search reads local session files on demand; larger histories take longer.",
+  contentSummary: "Scanned {files} session files · {sessions} sessions matched · {hits} results · {ms} ms",
+  contentTruncated: "Results truncated (at most 20 per session, 300 total); narrow the scope or add keywords.",
+  contentNoHits: "No conversation content matched",
+  contentNoHitsHint: "Full-text search covers user messages, assistant replies, thinking, and tool-call inputs; tool results are excluded. All words must appear in the same message.",
+  hitRoleAssistant: "Assistant",
+  hitKindThinking: "Thinking",
+  hitKindTool: "Tool {name}",
+  hitCountInSession: "{count} hits",
+  openAtMessage: "Jump to this message and highlight the keywords",
   commandReplyNote:
     "Replies to aside commands (e.g. /btw) are shown in the terminal only and not saved by Claude Code",
 

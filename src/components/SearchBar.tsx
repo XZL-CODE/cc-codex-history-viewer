@@ -50,6 +50,7 @@ export function SearchBar() {
             scope,
             project: scope === "folder" ? currentProject : null,
             agent: "all",
+            mode: "prompts",
           };
       const merged: SearchState = { ...base, ...next };
       if (merged.scope === "folder" && !merged.project) merged.scope = "global";

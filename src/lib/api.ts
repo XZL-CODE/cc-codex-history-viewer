@@ -9,6 +9,7 @@ import type {
   AgentFilter,
   ConversationDetail,
   ConversationExportResult,
+  ConversationSearchResponse,
   ExportParams,
   ExportResult,
   IndexMeta,
@@ -63,6 +64,20 @@ export const api = {
     }),
 
   /** 不传日期返回全量统计；传 YYYY-MM-DD 起止日期时按本地时区闭区间即时计算 */
+  /** 全文搜索会话内容：并行流式扫描会话文件，不落索引 */
+  searchConversations: (
+    query: string,
+    projectFilter: string | null,
+    agentFilter: AgentFilter,
+    limit?: number
+  ) =>
+    invoke<ConversationSearchResponse>("search_conversations", {
+      query,
+      projectFilter,
+      agentFilter,
+      limit,
+    }),
+
   getStats: (
     agentFilter: AgentFilter,
     startDate: string | null = null,

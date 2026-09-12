@@ -4,6 +4,7 @@
 import type { AgentFilter } from "./types";
 
 export type SearchScope = "global" | "folder";
+export type SearchMode = "prompts" | "content";
 
 export interface SearchState {
   q: string;
@@ -11,6 +12,8 @@ export interface SearchState {
   /** scope=folder 时的文件夹真实路径 */
   project: string | null;
   agent: AgentFilter;
+  /** prompts：只搜 Prompt；content：全文扫描会话内容 */
+  mode: SearchMode;
 }
 
 export const SEARCH_PATH = "/search";
@@ -24,7 +27,8 @@ export function parseSearchParams(search: string): SearchState {
   const agentRaw = params.get("agent");
   const agent: AgentFilter =
     agentRaw === "claude" || agentRaw === "codex" ? agentRaw : "all";
-  return { q, scope, project, agent };
+  const mode: SearchMode = params.get("mode") === "content" ? "content" : "prompts";
+  return { q, scope, project, agent, mode };
 }
 
 export function buildSearchUrl(state: SearchState): string {
@@ -35,6 +39,7 @@ export function buildSearchUrl(state: SearchState): string {
     params.set("project", state.project);
   }
   if (state.agent !== "all") params.set("agent", state.agent);
+  if (state.mode === "content") params.set("mode", "content");
   return `${SEARCH_PATH}?${params.toString()}`;
 }
 

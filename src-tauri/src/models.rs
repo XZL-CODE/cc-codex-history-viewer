@@ -90,6 +90,39 @@ pub struct SearchResult {
     pub match_ranges: Vec<[usize; 2]>,
 }
 
+/// One full-text hit inside a conversation file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationHit {
+    pub agent: Agent,
+    pub session_id: String,
+    pub project: String,
+    pub session_title: String,
+    pub session_started_at: i64,
+    /// Equals `ChatMessage.uuid` in the detail view when that message survived detail merging.
+    pub message_uuid: String,
+    pub timestamp: i64,
+    /// user | assistant
+    pub role: String,
+    /// text | thinking | tool_use
+    pub kind: String,
+    pub tool_name: Option<String>,
+    pub snippet: String,
+    /// Character ranges inside `snippet`, represented as [start, end).
+    pub match_ranges: Vec<[usize; 2]>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSearchResponse {
+    pub hits: Vec<ConversationHit>,
+    pub scanned_files: usize,
+    pub matched_sessions: usize,
+    /// True when a per-session cap or the global limit dropped hits.
+    pub truncated: bool,
+    pub elapsed_ms: u64,
+}
+
 /// Token usage attributed to one session. Copied fork/resume events count once, in the earliest
 /// session that recorded them, so session totals add up to the global totals.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

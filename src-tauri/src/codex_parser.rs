@@ -806,7 +806,7 @@ fn response_message_blocks(content: Option<&Value>) -> Vec<ContentBlock> {
     }
 }
 
-fn message_content_text(content: Option<&Value>, accepted_types: &[&str]) -> String {
+pub(crate) fn message_content_text(content: Option<&Value>, accepted_types: &[&str]) -> String {
     match content {
         Some(Value::String(text)) => text.clone(),
         Some(Value::Array(items)) => items
@@ -823,7 +823,7 @@ fn message_content_text(content: Option<&Value>, accepted_types: &[&str]) -> Str
     }
 }
 
-fn legacy_user_content(content: Option<&Value>) -> Option<String> {
+pub(crate) fn legacy_user_content(content: Option<&Value>) -> Option<String> {
     let parts: Vec<String> = match content {
         Some(Value::String(text)) => sanitize_legacy_user_text(text).into_iter().collect(),
         Some(Value::Array(items)) => items
@@ -905,7 +905,7 @@ fn strip_tag_blocks(input: &str, tag: &str) -> String {
     output
 }
 
-fn stable_message_id(kind: &str, timestamp: Option<i64>, payload: &Value) -> String {
+pub(crate) fn stable_message_id(kind: &str, timestamp: Option<i64>, payload: &Value) -> String {
     if let Some(id) =
         nonempty_string(payload.get("id")).or_else(|| nonempty_string(payload.get("call_id")))
     {
@@ -923,7 +923,7 @@ fn text_fingerprint(text: &str) -> u64 {
     stable_hash(&[text.trim()])
 }
 
-fn timestamp_ms(value: Option<&Value>) -> Option<i64> {
+pub(crate) fn timestamp_ms(value: Option<&Value>) -> Option<i64> {
     match value? {
         Value::String(value) => chrono::DateTime::parse_from_rfc3339(value)
             .ok()
@@ -973,7 +973,7 @@ fn value_u64(value: Option<&Value>) -> u64 {
         .unwrap_or(0)
 }
 
-fn value_text(value: Option<&Value>) -> String {
+pub(crate) fn value_text(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(value)) => value.clone(),
         Some(value) => serde_json::to_string_pretty(value).unwrap_or_default(),
@@ -1004,7 +1004,7 @@ fn tool_input_value(value: &Value) -> Value {
     }
 }
 
-fn nonempty_string(value: Option<&Value>) -> Option<String> {
+pub(crate) fn nonempty_string(value: Option<&Value>) -> Option<String> {
     value
         .and_then(Value::as_str)
         .map(str::trim)

@@ -3,6 +3,7 @@
 //! 所有会触碰索引或会话文件的 command 都是 async：索引构建与会话解析在 Tauri 的阻塞线程池中
 //! 执行，不会卡住主线程；构建期间通过 `index-progress` 事件向前端汇报进度。
 
+use crate::content_search;
 use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
@@ -215,6 +216,25 @@ pub async fn search_prompts(
         indexer::search(&idx.prompts, &query, project_filter.as_deref(), inc, filter)
     })
     .await
+}
+
+/// 全文搜索会话内容：并行流式扫描会话文件，覆盖用户消息、助手回复、思考与工具调用参数。
+#[tauri::command]
+pub async fn search_conversations(
+    query: String,
+    agent_filter: Option<AgentFilter>,
+    project_filter: Option<String>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ConversationSearchResponse, String> {
+    let index = ensure_index(&state, &app).await?;
+    let filter = agent_filter.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        content_search::search_index(&index, &query, filter, project_filter.as_deref(), limit)
+    })
+    .await
+    .map_err(|error| format!("Conversation search task failed: {error}"))
 }
 
 /// 把可选的 YYYY-MM-DD 起止日期解析为本地时区的毫秒闭区间；两端都为空表示不限范围。

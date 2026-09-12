@@ -69,6 +69,17 @@ pub(crate) fn for_each_jsonl_line(
     path: &Path,
     mut callback: impl FnMut(usize, &str),
 ) -> std::io::Result<()> {
+    for_each_jsonl_line_while(path, |line_no, line| {
+        callback(line_no, line);
+        true
+    })
+}
+
+/// Like [`for_each_jsonl_line`], but stops reading as soon as the callback returns `false`.
+pub(crate) fn for_each_jsonl_line_while(
+    path: &Path,
+    mut callback: impl FnMut(usize, &str) -> bool,
+) -> std::io::Result<()> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut bytes = Vec::new();
@@ -86,7 +97,9 @@ pub(crate) fn for_each_jsonl_line(
             bytes.pop();
         }
         let line = String::from_utf8_lossy(&bytes);
-        callback(line_no, line.trim());
+        if !callback(line_no, line.trim()) {
+            break;
+        }
         line_no += 1;
     }
     Ok(())
@@ -205,7 +218,7 @@ struct RawUsage {
 }
 
 /// ISO8601 字符串转毫秒时间戳
-fn iso_to_ms(s: &str) -> Option<i64> {
+pub(crate) fn iso_to_ms(s: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| dt.timestamp_millis())
@@ -613,7 +626,7 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
 // ----------------------------- 文本处理 -----------------------------
 
 /// 从 user 消息 content 提取可作为 prompt 的纯文本
-fn extract_prompt_text(content: &serde_json::Value) -> Option<String> {
+pub(crate) fn extract_prompt_text(content: &serde_json::Value) -> Option<String> {
     let raw = match content {
         serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Array(arr) => {
