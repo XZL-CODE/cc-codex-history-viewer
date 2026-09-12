@@ -1,8 +1,9 @@
 // 基于 TanStack Query 的数据请求 hooks。
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Agent, AgentFilter, ExportGroupBy, SortMode } from "@/lib/types";
+import type { ResolvedRange } from "@/lib/statsRange";
 import { useDebounce } from "./useDebounce";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -15,11 +16,15 @@ export function useProjects(agentFilter: AgentFilter) {
   });
 }
 
-export function useStats(agentFilter: AgentFilter) {
+/** 统计；切换范围时保留上一份数据（降低透明度）而不是闪成骨架屏。 */
+export function useStats(agentFilter: AgentFilter, range?: ResolvedRange) {
+  const start = range?.start ?? null;
+  const end = range?.end ?? null;
   return useQuery({
-    queryKey: ["stats", agentFilter],
-    queryFn: () => api.getStats(agentFilter),
+    queryKey: ["stats", agentFilter, start, end],
+    queryFn: () => api.getStats(agentFilter, start, end),
     staleTime: FIVE_MIN,
+    placeholderData: keepPreviousData,
   });
 }
 

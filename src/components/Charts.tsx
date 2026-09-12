@@ -7,7 +7,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { DayCount, HourCount, WeekdayCount } from "@/lib/types";
+import type { HourCount, WeekdayCount } from "@/lib/types";
 import { useT, type DictKey } from "@/i18n";
 
 const AXIS = "var(--muted)";
@@ -33,38 +33,6 @@ function TooltipBox({ active, payload, label, unit }: TooltipProps & { unit?: st
   );
 }
 
-/** 最近 14 个有记录日期的活跃度。 */
-export function ActivityChart({ data }: { data: DayCount[] }) {
-  const recent = data.slice(-14);
-  if (recent.length === 0) {
-    return <EmptyChart />;
-  }
-  return (
-    <ResponsiveContainer width="100%" height={174}>
-      <BarChart data={recent} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-        <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
-        <XAxis
-          dataKey="day"
-          tick={{ fill: AXIS, fontSize: 10 }}
-          tickFormatter={(d: string) => d.slice(5)}
-          minTickGap={28}
-          stroke={GRID}
-        />
-        <YAxis
-          tick={{ fill: AXIS, fontSize: 10 }}
-          stroke={GRID}
-          allowDecimals={false}
-          width={32}
-        />
-        <Tooltip
-          content={<TooltipBox />}
-          cursor={{ fill: "var(--surface-2)" }}
-        />
-        <Bar dataKey="count" fill={ACCENT} radius={[3, 3, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
 
 /** 24 小时活跃分布 */
 export function HourChart({ data }: { data: HourCount[] }) {
@@ -138,11 +106,4 @@ export function WeekdayChart({ data }: { data: WeekdayCount[] }) {
   );
 }
 
-function EmptyChart() {
-  const t = useT();
-  return (
-    <div className="flex h-52 items-center justify-center text-xs text-muted">
-      {t("noData")}
-    </div>
-  );
-}
+

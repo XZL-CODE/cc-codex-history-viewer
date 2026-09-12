@@ -24,6 +24,10 @@ pub struct AppIndex {
     pub session_files: HashMap<(Agent, String), String>,
     /// Usage attributed per (agent, session id); see [`attribute_session_usage`].
     pub session_usage: HashMap<(Agent, String), SessionUsage>,
+    /// Globally unique usage events (fork/resume copies removed), for on-demand range statistics.
+    pub usage_events: Vec<UsageEntry>,
+    /// CLI versions seen in Claude `sessions/*.json`, merged into every statistics view.
+    pub claude_cli_versions: Vec<String>,
     projects_all: Vec<ProjectInfo>,
     projects_claude: Vec<ProjectInfo>,
     projects_codex: Vec<ProjectInfo>,
@@ -416,29 +420,30 @@ fn assemble_index(
     let projects_claude = aggregate_projects(&prompts, &sessions, AgentFilter::Claude);
     let projects_codex = aggregate_projects(&prompts, &sessions, AgentFilter::Codex);
     let extra_claude_versions = collect_claude_session_versions(&paths.claude.sessions);
+    let usage_events = collect_unique_events(&conv);
     let stats_all = compute_stats(
         &prompts,
         &sessions,
-        &conv,
+        &usage_events,
         AgentFilter::All,
-        projects_all.len(),
         &extra_claude_versions,
+        None,
     );
     let stats_claude = compute_stats(
         &prompts,
         &sessions,
-        &conv,
+        &usage_events,
         AgentFilter::Claude,
-        projects_claude.len(),
         &extra_claude_versions,
+        None,
     );
     let stats_codex = compute_stats(
         &prompts,
         &sessions,
-        &conv,
+        &usage_events,
         AgentFilter::Codex,
-        projects_codex.len(),
         &extra_claude_versions,
+        None,
     );
 
     AppIndex {
@@ -446,6 +451,8 @@ fn assemble_index(
         sessions,
         session_files,
         session_usage,
+        usage_events,
+        claude_cli_versions: extra_claude_versions,
         projects_all,
         projects_claude,
         projects_codex,
@@ -790,22 +797,57 @@ fn aggregate_projects(
 
 // ----------------------------- Statistics -----------------------------
 
+fn in_range(timestamp: i64, range: Option<(i64, i64)>) -> bool {
+    range.map_or(true, |(start, end)| timestamp >= start && timestamp <= end)
+}
+
+/// Statistics for an arbitrary inclusive millisecond range, computed on demand from the index.
+pub fn compute_stats_in_range(
+    index: &AppIndex,
+    filter: AgentFilter,
+    start_ms: i64,
+    end_ms: i64,
+) -> AppStats {
+    compute_stats(
+        &index.prompts,
+        &index.sessions,
+        &index.usage_events,
+        filter,
+        &index.claude_cli_versions,
+        Some((start_ms, end_ms)),
+    )
+}
+
 fn compute_stats(
     prompts: &[PromptEntry],
     sessions: &[SessionSummary],
-    conv: &[ConvFileResult],
+    usage_events: &[UsageEntry],
     filter: AgentFilter,
-    total_projects: usize,
     extra_claude_versions: &[String],
+    range: Option<(i64, i64)>,
 ) -> AppStats {
     let selected_prompts: Vec<&PromptEntry> = prompts
         .iter()
         .filter(|prompt| filter.includes(prompt.agent))
+        .filter(|prompt| in_range(prompt.timestamp, range))
         .collect();
     let selected_sessions: Vec<&SessionSummary> = sessions
         .iter()
         .filter(|session| filter.includes(session.agent))
+        .filter(|session| in_range(session.started_at, range))
         .collect();
+    // Same definition as the project list: the union of non-empty cwd paths.
+    let total_projects = selected_prompts
+        .iter()
+        .map(|prompt| prompt.project.as_str())
+        .chain(
+            selected_sessions
+                .iter()
+                .map(|session| session.project.as_str()),
+        )
+        .filter(|project| !project.is_empty())
+        .collect::<HashSet<_>>()
+        .len();
     let mut history_prompts = 0usize;
     let mut conversation_prompts = 0usize;
     let mut command_count = 0usize;
@@ -925,7 +967,7 @@ fn compute_stats(
         by_weekday,
         top_projects,
         cli_versions,
-        usage: compute_usage(conv, filter),
+        usage: compute_usage(usage_events, filter, range),
     }
 }
 
@@ -1024,11 +1066,12 @@ fn attribute_session_usage(conv: &[ConvFileResult]) -> HashMap<(Agent, String), 
         .collect()
 }
 
-fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
+/// Every usage event across all files, sorted deterministically and deduplicated by
+/// `(agent, dedup_key)` so fork/resume copies count once.
+fn collect_unique_events(conv: &[ConvFileResult]) -> Vec<UsageEntry> {
     let mut events: Vec<&UsageEntry> = conv
         .iter()
         .flat_map(|result| result.usage_entries.iter())
-        .filter(|event| filter.includes(event.agent))
         .collect();
     events.sort_by(|left, right| {
         left.agent
@@ -1037,8 +1080,20 @@ fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
             .then_with(|| left.dedup_key.cmp(&right.dedup_key))
             .then_with(|| left.project.cmp(&right.project))
     });
-
     let mut seen: HashSet<(Agent, &str)> = HashSet::new();
+    events
+        .into_iter()
+        .filter(|event| seen.insert((event.agent, event.dedup_key.as_str())))
+        .cloned()
+        .collect()
+}
+
+/// Aggregate already-unique events for one agent filter and optional time range.
+fn compute_usage(
+    events: &[UsageEntry],
+    filter: AgentFilter,
+    range: Option<(i64, i64)>,
+) -> UsageStats {
     let mut total = NormalizedUsage::default();
     let mut est_cost_usd = 0.0;
     let mut unknown_model_tokens = 0u64;
@@ -1047,10 +1102,11 @@ fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
     let mut by_day: HashMap<String, UsageAggregate> = HashMap::new();
     let mut by_project: HashMap<String, UsageAggregate> = HashMap::new();
 
-    for event in events {
-        if !seen.insert((event.agent, event.dedup_key.as_str())) {
-            continue;
-        }
+    for event in events
+        .iter()
+        .filter(|event| filter.includes(event.agent))
+        .filter(|event| in_range(event.timestamp, range))
+    {
         let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
         total.add_assign(event.usage);
         assistant_messages += 1;
@@ -1454,7 +1510,7 @@ mod tests {
         assert_eq!(resumed.assistant_messages, 1, "only the new k3 call");
         assert!(!usage.contains_key(&(Agent::Claude, "agent-1".to_string())));
 
-        let global = compute_usage(&conv, AgentFilter::All);
+        let global = compute_usage(&collect_unique_events(&conv), AgentFilter::All, None);
         let session_sum: u64 = usage
             .values()
             .map(|entry| entry.total_tokens_including_cache)
@@ -1467,6 +1523,64 @@ mod tests {
                 .sum::<usize>(),
             global.assistant_messages
         );
+    }
+
+    #[test]
+    fn range_statistics_only_count_records_inside_the_window() {
+        let mut early = prompt(Agent::Claude, "early");
+        early.timestamp = 1_000;
+        early.project = "/synthetic/early".to_string();
+        let mut late = prompt(Agent::Codex, "late");
+        late.timestamp = 5_000;
+        late.project = "/synthetic/late".to_string();
+        let prompts = vec![early, late];
+        let events = collect_unique_events(&[
+            conv_with_usage(
+                "s1",
+                "/synthetic/projects/p/s1.jsonl",
+                1_000,
+                false,
+                &["k1"],
+            ),
+            conv_with_usage(
+                "s2",
+                "/synthetic/projects/p/s2.jsonl",
+                5_000,
+                false,
+                &["k2"],
+            ),
+        ]);
+
+        let all = compute_stats(&prompts, &[], &events, AgentFilter::All, &[], None);
+        assert_eq!(all.total_prompts, 2);
+        assert_eq!(all.total_projects, 2);
+        assert_eq!(all.usage.assistant_messages, 2);
+
+        let window = compute_stats(
+            &prompts,
+            &[],
+            &events,
+            AgentFilter::All,
+            &[],
+            Some((4_000, 6_000)),
+        );
+        assert_eq!(window.total_prompts, 1);
+        assert_eq!(window.total_projects, 1);
+        assert_eq!(window.first_use, 5_000);
+        assert_eq!(window.usage.assistant_messages, 1);
+        assert_eq!(window.usage.total_tokens_including_cache, 180);
+
+        let empty = compute_stats(
+            &prompts,
+            &[],
+            &events,
+            AgentFilter::All,
+            &[],
+            Some((10_000, 20_000)),
+        );
+        assert_eq!(empty.total_prompts, 0);
+        assert_eq!(empty.first_use, 0);
+        assert!(empty.usage.by_day.is_empty());
     }
 
     #[test]

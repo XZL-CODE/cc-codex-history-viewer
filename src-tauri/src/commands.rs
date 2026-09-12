@@ -217,15 +217,47 @@ pub async fn search_prompts(
     .await
 }
 
-/// 统计信息
+/// 把可选的 YYYY-MM-DD 起止日期解析为本地时区的毫秒闭区间；两端都为空表示不限范围。
+fn parse_range(start: Option<&str>, end: Option<&str>) -> Result<Option<(i64, i64)>, String> {
+    let start = start.map(str::trim).filter(|value| !value.is_empty());
+    let end = end.map(str::trim).filter(|value| !value.is_empty());
+    if start.is_none() && end.is_none() {
+        return Ok(None);
+    }
+    let start_ms = match start {
+        Some(value) => {
+            export::day_start_ms(value).ok_or_else(|| format!("起始日期无法解析：{value}"))?
+        }
+        None => i64::MIN,
+    };
+    let end_ms = match end {
+        Some(value) => {
+            export::day_end_ms(value).ok_or_else(|| format!("结束日期无法解析：{value}"))?
+        }
+        None => i64::MAX,
+    };
+    if start_ms > end_ms {
+        return Err("起始日期不能晚于结束日期。".to_string());
+    }
+    Ok(Some((start_ms, end_ms)))
+}
+
+/// 统计信息。不传日期时返回预计算的全量统计；传了日期则按范围即时计算。
 #[tauri::command]
 pub async fn get_stats(
     agent_filter: Option<AgentFilter>,
+    start_date: Option<String>,
+    end_date: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<AppStats, String> {
     let filter = agent_filter.unwrap_or_default();
-    read_index(&state, &app, |idx| idx.stats_for(filter).clone()).await
+    let range = parse_range(start_date.as_deref(), end_date.as_deref())?;
+    read_index(&state, &app, |idx| match range {
+        None => idx.stats_for(filter).clone(),
+        Some((start_ms, end_ms)) => indexer::compute_stats_in_range(idx, filter, start_ms, end_ms),
+    })
+    .await
 }
 
 /// 指定文件夹下的会话列表

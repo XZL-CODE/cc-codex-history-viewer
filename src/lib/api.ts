@@ -62,8 +62,12 @@ export const api = {
       agentFilter,
     }),
 
-  getStats: (agentFilter: AgentFilter) =>
-    invoke<AppStats>("get_stats", { agentFilter }),
+  /** 不传日期返回全量统计；传 YYYY-MM-DD 起止日期时按本地时区闭区间即时计算 */
+  getStats: (
+    agentFilter: AgentFilter,
+    startDate: string | null = null,
+    endDate: string | null = null
+  ) => invoke<AppStats>("get_stats", { agentFilter, startDate, endDate }),
 
   getProjectSessions: (project: string, agentFilter: AgentFilter) =>
     invoke<SessionSummary[]>("get_project_sessions", { project, agentFilter }),

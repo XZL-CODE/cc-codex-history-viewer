@@ -1,10 +1,18 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BarChart3, ListTree, Settings } from "lucide-react";
+import { AlertTriangle, CalendarDays, ListTree, Settings } from "lucide-react";
 import { useStore } from "@/store";
 import { useIndexMeta, useRecentPrompts, useStats } from "@/hooks/queries";
 import { StatsOverview } from "@/components/StatsOverview";
-import { ActivityChart, HourChart, WeekdayChart } from "@/components/Charts";
+import { HourChart, WeekdayChart } from "@/components/Charts";
+import { ActivityHeatmap } from "@/components/Heatmap";
+import { RangeControl } from "@/components/RangeControl";
+import {
+  persistStatsRange,
+  readStatsRange,
+  resolveRange,
+  type StatsRange,
+} from "@/lib/statsRange";
 import { TokenStats } from "@/components/TokenStats";
 import { PromptList } from "@/components/PromptList";
 import {
@@ -19,7 +27,7 @@ import {
 import { indexProgressLabel } from "@/components/IndexProgress";
 import { errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
-import { absoluteTime, encodePath, formatNumber } from "@/lib/utils";
+import { absoluteTime, cn, encodePath, formatNumber } from "@/lib/utils";
 import { AgentFilterControl } from "@/components/AgentBadge";
 import type { ProjectCount } from "@/lib/types";
 
@@ -86,7 +94,12 @@ export function Home() {
     openSettings,
   } = useStore();
   const t = useT();
-  const statsQ = useStats(agentFilter);
+  const [range, setRange] = useState<StatsRange>(readStatsRange);
+  useEffect(() => {
+    persistStatsRange(range);
+  }, [range]);
+  const resolvedRange = useMemo(() => resolveRange(range), [range]);
+  const statsQ = useStats(agentFilter, resolvedRange);
   const metaQ = useIndexMeta();
   const recentQ = useRecentPrompts(24, includeCommands, agentFilter);
 
@@ -130,6 +143,10 @@ export function Home() {
           </h1>
           <p className="mt-0.5 text-xs text-muted">{metaLine}</p>
         </div>
+      </header>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <RangeControl value={range} onChange={setRange} />
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs font-medium text-muted max-[1080px]:hidden">
             {t("overviewAgentSource")}
@@ -140,7 +157,7 @@ export function Home() {
             ariaLabel={t("overviewAgentSource")}
           />
         </div>
-      </header>
+      </div>
 
       {statsQ.isLoading ? (
         <StatsSkeleton />
@@ -166,22 +183,31 @@ export function Home() {
           }
         />
       ) : statsQ.data ? (
-        <>
+        <div
+          className={cn(
+            "space-y-5 transition-opacity duration-200",
+            statsQ.isPlaceholderData && "opacity-60"
+          )}
+        >
           <StatsOverview stats={statsQ.data} agentFilter={agentFilter} />
 
           <div className="grid min-w-0 grid-cols-[minmax(0,1.6fr)_minmax(300px,0.9fr)] gap-3.5 max-[1200px]:grid-cols-1">
             <Card className="min-h-[240px] min-w-0">
               <CardHeader className="flex items-start justify-between">
                 <div>
-                  <CardTitle>{t("dailyActivity")}</CardTitle>
+                  <CardTitle>{t("heatmapTitle")}</CardTitle>
                   <p className="mt-1 text-xs text-muted">
                     {t("promptCountMetric")}
                   </p>
                 </div>
-                <BarChart3 size={17} className="text-muted" />
+                <CalendarDays size={17} className="text-muted" />
               </CardHeader>
               <CardContent>
-                <ActivityChart data={statsQ.data.byDay} />
+                <ActivityHeatmap
+                  data={statsQ.data.byDay}
+                  rangeStart={resolvedRange.start}
+                  rangeEnd={resolvedRange.end}
+                />
               </CardContent>
             </Card>
             <Card className="min-w-0">
@@ -199,7 +225,7 @@ export function Home() {
               </CardContent>
             </Card>
           </div>
-        </>
+        </div>
       ) : null}
 
       <section>
@@ -231,7 +257,12 @@ export function Home() {
       </section>
 
       {statsQ.data ? (
-        <>
+        <div
+          className={cn(
+            "space-y-5 transition-opacity duration-200",
+            statsQ.isPlaceholderData && "opacity-60"
+          )}
+        >
           <div className="grid min-w-0 grid-cols-2 gap-3 max-[1200px]:grid-cols-1">
             <Card>
               <CardHeader>
@@ -252,7 +283,7 @@ export function Home() {
           </div>
 
           <TokenStats usage={statsQ.data.usage} agentFilter={agentFilter} />
-        </>
+        </div>
       ) : null}
     </div>
   );
