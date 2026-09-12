@@ -73,7 +73,8 @@ export const api = {
 
   getIndexMeta: () => invoke<IndexMeta>("get_index_meta"),
 
-  refreshIndex: () => invoke<IndexMeta>("refresh_index"),
+  /** 刷新索引：默认增量（只重解析变化文件）；full=true 忽略缓存全量重建 */
+  refreshIndex: (full = false) => invoke<IndexMeta>("refresh_index", { full }),
 
   buildExport: (p: ExportParams) =>
     invoke<ExportResult>("build_prompt_export", {

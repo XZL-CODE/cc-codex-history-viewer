@@ -553,13 +553,9 @@ fn now_label() -> String {
     Local::now().format("%Y-%m-%d %H:%M").to_string()
 }
 
-/// 取路径末级目录名作为展示名。
+/// 取路径末级目录名作为展示名（与索引层共用同一规则，兼容 Windows 分隔符）。
 fn project_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    match trimmed.rsplit('/').next() {
-        Some(s) if !s.is_empty() => s.to_string(),
-        _ => path.to_string(),
-    }
+    crate::indexer::project_name(path)
 }
 
 /// /Users/xxx/... → ~/...
@@ -591,6 +587,7 @@ mod tests {
             timestamp: ts,
             origin: PromptOrigin::Conversation,
             session_id: None,
+            has_conversation: false,
             git_branch: None,
             is_command,
             pasted_count: 0,
@@ -727,6 +724,7 @@ mod tests {
             text: Some(t.to_string()),
             tool_name: None,
             tool_input: None,
+            truncated: false,
         }
     }
 
@@ -763,12 +761,14 @@ mod tests {
                             text: Some("想一想".into()),
                             tool_name: None,
                             tool_input: None,
+                            truncated: false,
                         },
                         ContentBlock {
                             kind: "tool_use".into(),
                             text: None,
                             tool_name: Some("Bash".into()),
                             tool_input: Some(serde_json::json!({"command": "ls"})),
+                            truncated: false,
                         },
                     ],
                 },

@@ -1,7 +1,9 @@
 //! Streaming parser adapter for OpenAI Codex history and rollout JSONL files.
 
 use crate::models::{Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage};
-use crate::parser::{for_each_jsonl_line, stable_hash, ConvFileResult, RawPrompt, UsageEntry};
+use crate::parser::{
+    clip, for_each_jsonl_line, stable_hash, ConvFileResult, RawPrompt, UsageEntry,
+};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -215,7 +217,7 @@ impl RolloutAccumulator {
             prompt: raw_prompt(text.clone(), self.current_cwd.clone(), ts),
         });
         if self.collect_detail {
-            let mut blocks = vec![text_block(truncate_text(&text))];
+            let mut blocks = vec![text_block(&text)];
             if has_images && text != "[Image]" {
                 blocks.push(image_block());
             }
@@ -247,7 +249,7 @@ impl RolloutAccumulator {
                         stable_message_id("event-assistant", timestamp, payload),
                         "assistant",
                         timestamp.unwrap_or(0),
-                        vec![text_block(truncate_text(&text))],
+                        vec![text_block(&text)],
                     ),
                 },
             ));
@@ -372,7 +374,7 @@ impl RolloutAccumulator {
                             stable_message_id("legacy-user", timestamp, payload),
                             "user",
                             ts,
-                            vec![text_block(truncate_text(&text))],
+                            vec![text_block(&text)],
                         ),
                     });
                 }
@@ -424,7 +426,7 @@ impl RolloutAccumulator {
                     stable_message_id("response-agent", timestamp, payload),
                     "assistant",
                     timestamp.unwrap_or(0),
-                    vec![text_block(truncate_text(&text))],
+                    vec![text_block(&text)],
                 ),
             });
         }
@@ -444,12 +446,7 @@ impl RolloutAccumulator {
                 stable_message_id("reasoning", timestamp, payload),
                 "assistant",
                 timestamp.unwrap_or(0),
-                vec![ContentBlock {
-                    kind: "thinking".to_string(),
-                    text: Some(truncate_text(&text)),
-                    tool_name: None,
-                    tool_input: None,
-                }],
+                vec![clipped_block("thinking", &text, None)],
             ),
         });
     }
@@ -486,6 +483,7 @@ impl RolloutAccumulator {
                     text: None,
                     tool_name: Some(name.clone()),
                     tool_input: input,
+                    truncated: false,
                 }],
             ),
         });
@@ -498,12 +496,7 @@ impl RolloutAccumulator {
                         format!("{call_id}:output"),
                         "assistant",
                         timestamp.unwrap_or(0),
-                        vec![ContentBlock {
-                            kind: "tool_result".to_string(),
-                            text: Some(truncate_text(&output)),
-                            tool_name: Some(name),
-                            tool_input: None,
-                        }],
+                        vec![clipped_block("tool_result", &output, Some(name))],
                     ),
                 });
             }
@@ -523,12 +516,11 @@ impl RolloutAccumulator {
                 format!("{call_id}:output"),
                 "assistant",
                 timestamp.unwrap_or(0),
-                vec![ContentBlock {
-                    kind: "tool_result".to_string(),
-                    text: Some(truncate_text(&output)),
-                    tool_name: self.tool_names.get(&call_id).cloned(),
-                    tool_input: None,
-                }],
+                vec![clipped_block(
+                    "tool_result",
+                    &output,
+                    self.tool_names.get(&call_id).cloned(),
+                )],
             ),
         });
     }
@@ -767,28 +759,35 @@ fn chat_message(
     }
 }
 
-fn text_block(text: String) -> ContentBlock {
+fn text_block(text: &str) -> ContentBlock {
+    clipped_block("text", text, None)
+}
+
+fn clipped_block(kind: &str, text: &str, tool_name: Option<String>) -> ContentBlock {
+    let (text, truncated) = clip(text, MAX_BLOCK_CHARS);
     ContentBlock {
-        kind: "text".to_string(),
+        kind: kind.to_string(),
         text: Some(text),
-        tool_name: None,
+        tool_name,
         tool_input: None,
+        truncated,
     }
 }
 
 fn image_block() -> ContentBlock {
     ContentBlock {
         kind: "image".to_string(),
-        text: Some("[Image]".to_string()),
+        text: None,
         tool_name: None,
         tool_input: None,
+        truncated: false,
     }
 }
 
 fn response_message_blocks(content: Option<&Value>) -> Vec<ContentBlock> {
     match content {
         Some(Value::String(text)) if !text.trim().is_empty() => {
-            vec![text_block(truncate_text(text.trim()))]
+            vec![text_block(text.trim())]
         }
         Some(Value::Array(items)) => items
             .iter()
@@ -797,7 +796,7 @@ fn response_message_blocks(content: Option<&Value>) -> Vec<ContentBlock> {
                 if !matches!(item_type, "output_text" | "text") {
                     return None;
                 }
-                nonempty_string(item.get("text")).map(|text| text_block(truncate_text(&text)))
+                nonempty_string(item.get("text")).map(|text| text_block(&text))
             })
             .collect(),
         _ => Vec::new(),
@@ -1030,15 +1029,6 @@ fn session_id_from_stem(stem: &str) -> String {
         }
     }
     stem.to_string()
-}
-
-fn truncate_text(text: &str) -> String {
-    if text.chars().count() <= MAX_BLOCK_CHARS {
-        text.to_string()
-    } else {
-        let prefix: String = text.chars().take(MAX_BLOCK_CHARS).collect();
-        format!("{prefix}\n... (content truncated)")
-    }
 }
 
 #[cfg(test)]

@@ -7,12 +7,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type {
-  DayCount,
-  HourCount,
-  ProjectCount,
-  WeekdayCount,
-} from "@/lib/types";
+import type { DayCount, HourCount, WeekdayCount } from "@/lib/types";
 import { useT, type DictKey } from "@/i18n";
 
 const AXIS = "var(--muted)";
@@ -138,43 +133,6 @@ export function WeekdayChart({ data }: { data: WeekdayCount[] }) {
           cursor={{ fill: "var(--surface-2)" }}
         />
         <Bar dataKey="count" fill={ACCENT} radius={[3, 3, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
-
-/** 项目 Prompt 数量 Top 榜 */
-export function ProjectChart({ data }: { data: ProjectCount[] }) {
-  if (data.length === 0) {
-    return <EmptyChart />;
-  }
-  const height = Math.max(160, data.length * 34 + 24);
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart
-        layout="vertical"
-        data={data}
-        margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
-      >
-        <CartesianGrid stroke={GRID} strokeDasharray="3 3" horizontal={false} />
-        <XAxis
-          type="number"
-          tick={{ fill: AXIS, fontSize: 10 }}
-          stroke={GRID}
-          allowDecimals={false}
-        />
-        <YAxis
-          type="category"
-          dataKey="name"
-          tick={{ fill: AXIS, fontSize: 11 }}
-          stroke={GRID}
-          width={120}
-        />
-        <Tooltip
-          content={<TooltipBox />}
-          cursor={{ fill: "var(--surface-2)" }}
-        />
-        <Bar dataKey="count" fill={ACCENT} radius={[0, 3, 3, 0]} barSize={16} />
       </BarChart>
     </ResponsiveContainer>
   );

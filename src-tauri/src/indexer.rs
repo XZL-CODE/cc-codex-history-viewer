@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEDUP_WINDOW_MS: i64 = 5 * 60 * 1000;
@@ -149,15 +150,40 @@ struct FileSpec {
     path: PathBuf,
 }
 
+/// Progress callback invoked from parser worker threads while an index builds.
+pub type ProgressFn<'a> = &'a (dyn Fn(IndexProgress) + Sync);
+
+fn no_progress(_: IndexProgress) {}
+
 pub fn load_or_build(paths: &DataPaths, cache_path: Option<&Path>) -> AppIndex {
-    build(paths, cache_path, false)
+    build(paths, cache_path, false, &no_progress)
 }
 
 pub fn build_and_cache(paths: &DataPaths, cache_path: Option<&Path>) -> AppIndex {
-    build(paths, cache_path, true)
+    build(paths, cache_path, true, &no_progress)
 }
 
-fn build(paths: &DataPaths, cache_path: Option<&Path>, force: bool) -> AppIndex {
+/// Build the index, reusing the cache unless `force` is set, and report progress as files parse.
+pub fn build_with_progress(
+    paths: &DataPaths,
+    cache_path: Option<&Path>,
+    force: bool,
+    progress: ProgressFn,
+) -> AppIndex {
+    build(paths, cache_path, force, progress)
+}
+
+fn build(
+    paths: &DataPaths,
+    cache_path: Option<&Path>,
+    force: bool,
+    progress: ProgressFn,
+) -> AppIndex {
+    progress(IndexProgress {
+        phase: IndexPhase::Scanning,
+        done: 0,
+        total: 0,
+    });
     let specs = collect_source_files(paths);
     let mut old = if force {
         CacheV5::empty()
@@ -217,7 +243,12 @@ fn build(paths: &DataPaths, cache_path: Option<&Path>, force: bool) -> AppIndex 
     }
 
     let reparsed_files = to_parse.len();
-    for (key, fingerprint, conv) in parse_files_parallel(to_parse) {
+    progress(IndexProgress {
+        phase: IndexPhase::Parsing,
+        done: 0,
+        total: reparsed_files,
+    });
+    for (key, fingerprint, conv) in parse_files_parallel(to_parse, progress) {
         files.insert(
             key,
             FileCache {
@@ -240,20 +271,40 @@ fn build(paths: &DataPaths, cache_path: Option<&Path>, force: bool) -> AppIndex 
             write_cache(path, &cache);
         }
     }
-    assemble_index(paths, cache, from_cache, reparsed_files)
+    progress(IndexProgress {
+        phase: IndexPhase::Assembling,
+        done: reparsed_files,
+        total: reparsed_files,
+    });
+    let index = assemble_index(paths, cache, from_cache, reparsed_files);
+    progress(IndexProgress {
+        phase: IndexPhase::Done,
+        done: reparsed_files,
+        total: reparsed_files,
+    });
+    index
 }
 
 fn parse_files_parallel(
     items: Vec<(String, FileFingerprint, FileSpec)>,
+    progress: ProgressFn,
 ) -> Vec<(String, FileFingerprint, ConvFileResult)> {
+    let total = items.len();
+    let finished = AtomicUsize::new(0);
     items
         .into_par_iter()
         .filter_map(|(key, fingerprint, spec)| {
             let result = match spec.agent {
                 Agent::Claude => parser::parse_conversation_file(&spec.path),
                 Agent::Codex => codex_parser::parse_rollout_file(&spec.path),
-            }?;
-            Some((key, fingerprint, result))
+            };
+            let done = finished.fetch_add(1, Ordering::Relaxed) + 1;
+            progress(IndexProgress {
+                phase: IndexPhase::Parsing,
+                done,
+                total,
+            });
+            result.map(|result| (key, fingerprint, result))
         })
         .collect()
 }
@@ -335,7 +386,7 @@ fn assemble_index(
     resolve_missing_claude_projects(&histories, &mut conv);
     associate_codex_history(&mut histories, &conv);
 
-    let prompts = merge_prompts(histories, &conv);
+    let mut prompts = merge_prompts(histories, &conv);
     let winners = session_winners(paths, &conv);
     let sessions = build_sessions(&winners);
     let session_files = winners
@@ -347,6 +398,16 @@ fn assemble_index(
             )
         })
         .collect();
+    let present_sessions: HashSet<(Agent, &str)> = winners
+        .iter()
+        .map(|result| (result.agent, result.session_id.as_str()))
+        .collect();
+    for prompt in &mut prompts {
+        prompt.has_conversation = prompt
+            .session_id
+            .as_deref()
+            .is_some_and(|session_id| present_sessions.contains(&(prompt.agent, session_id)));
+    }
 
     let projects_all = aggregate_projects(&prompts, &sessions, AgentFilter::All);
     let projects_claude = aggregate_projects(&prompts, &sessions, AgentFilter::Claude);
@@ -411,7 +472,7 @@ fn resolve_missing_claude_projects(history: &[RawPrompt], conv: &mut [ConvFileRe
     }
     let decoded: HashMap<String, String> = paths
         .into_iter()
-        .map(|path| (path.replace('/', "-"), path))
+        .map(|path| (encode_claude_project_dir(&path), path))
         .collect();
 
     for result in conv
@@ -437,6 +498,20 @@ fn resolve_missing_claude_projects(history: &[RawPrompt], conv: &mut [ConvFileRe
             }
         }
     }
+}
+
+/// Claude Code names each project directory by replacing every non-alphanumeric character of
+/// the cwd with `-`: `/Users/me/我的项目` becomes `-Users-me-----` and `C:\work` becomes `C--work`.
+fn encode_claude_project_dir(path: &str) -> String {
+    path.chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn associate_codex_history(history: &mut Vec<RawPrompt>, conv: &[ConvFileResult]) {
@@ -525,6 +600,7 @@ fn merge_prompts(history: Vec<RawPrompt>, conv: &[ConvFileResult]) -> Vec<Prompt
                 timestamp: base_ts,
                 origin,
                 session_id,
+                has_conversation: false,
                 git_branch,
                 is_command: text.starts_with('/'),
                 pasted_count,
@@ -612,10 +688,11 @@ fn build_sessions(conv: &[&ConvFileResult]) -> Vec<SessionSummary> {
     sessions
 }
 
-fn project_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
+/// Last path component, accepting both `/` and `\` so Windows working directories get a name.
+pub(crate) fn project_name(path: &str) -> String {
+    let trimmed = path.trim_end_matches(['/', '\\']);
     trimmed
-        .rsplit('/')
+        .rsplit(['/', '\\'])
         .next()
         .filter(|name| !name.is_empty())
         .unwrap_or(path)
@@ -1177,6 +1254,7 @@ mod tests {
             timestamp: 0,
             origin: PromptOrigin::History,
             session_id: None,
+            has_conversation: false,
             git_branch: None,
             is_command: false,
             pasted_count: 0,
@@ -1216,6 +1294,18 @@ mod tests {
         let results = search(&prompts, "foo bar", None, true, AgentFilter::Codex);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry.agent, Agent::Codex);
+    }
+
+    #[test]
+    fn project_names_and_directory_encoding_cover_windows_and_unicode() {
+        assert_eq!(project_name("/Users/me/proj/"), "proj");
+        assert_eq!(project_name("C:\\Users\\me\\proj"), "proj");
+        assert_eq!(project_name("/"), "/");
+        assert_eq!(
+            encode_claude_project_dir("/Users/you/Desktop/我的项目/claude-code"),
+            "-Users-you-Desktop------claude-code"
+        );
+        assert_eq!(encode_claude_project_dir("C:\\work"), "C--work");
     }
 
     #[test]

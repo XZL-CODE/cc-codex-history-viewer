@@ -42,6 +42,9 @@ function BlockView({ block }: { block: ContentBlock }) {
     return (
       <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
         {block.text}
+        {block.truncated && (
+          <p className="mt-1 text-[11px] text-warning">{t("blockTruncatedNote")}</p>
+        )}
       </div>
     );
   }
@@ -74,6 +77,9 @@ function BlockView({ block }: { block: ContentBlock }) {
       <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 pb-2.5 text-[11px] leading-relaxed text-muted">
         {body}
       </pre>
+      {block.truncated && (
+        <p className="px-3 pb-2 text-[11px] text-warning">{t("blockTruncatedNote")}</p>
+      )}
     </details>
   );
 }

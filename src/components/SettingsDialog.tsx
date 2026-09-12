@@ -6,8 +6,10 @@ import { X } from "lucide-react";
 import { useSettings } from "@/hooks/queries";
 import { api, errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
+import { useStore } from "@/store";
 import type { SettingsInput } from "@/lib/types";
 import { Badge, Button, Input, Spinner } from "@/components/ui";
+import { indexProgressLabel } from "./IndexProgress";
 
 const EMPTY_FORM: SettingsInput = {
   claudeDataDir: "",
@@ -76,6 +78,7 @@ export function SettingsDialog({
 }) {
   const queryClient = useQueryClient();
   const t = useT();
+  const { refreshing, refreshIndex, indexProgress } = useStore();
   const settingsQ = useSettings(open);
   const data = settingsQ.data;
 
@@ -228,6 +231,56 @@ export function SettingsDialog({
                   placeholder={t("codexDataDirPlaceholder")}
                   onChange={setField("codexDataDir")}
                 />
+              </section>
+
+              <section className="space-y-3 rounded-lg border border-border p-3">
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("indexMaintenance")}
+                </h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="flex flex-col rounded-lg bg-surface-2/60 p-3">
+                    <div className="text-xs font-medium text-foreground">
+                      {t("incrementalRefresh")}
+                    </div>
+                    <p className="mt-1 flex-1 text-[11px] leading-relaxed text-muted">
+                      {t("incrementalRefreshHint")}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 self-start"
+                      disabled={refreshing}
+                      onClick={() => void refreshIndex(false)}
+                    >
+                      {t("incrementalRefresh")}
+                    </Button>
+                  </div>
+                  <div className="flex flex-col rounded-lg bg-surface-2/60 p-3">
+                    <div className="text-xs font-medium text-foreground">
+                      {t("fullRebuild")}
+                    </div>
+                    <p className="mt-1 flex-1 text-[11px] leading-relaxed text-muted">
+                      {t("fullRebuildHint")}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 self-start"
+                      disabled={refreshing}
+                      onClick={() => void refreshIndex(true)}
+                    >
+                      {t("fullRebuild")}
+                    </Button>
+                  </div>
+                </div>
+                {(refreshing || indexProgress) && (
+                  <p className="flex items-center gap-2 text-[11px] text-muted">
+                    <Spinner />
+                    {indexProgress
+                      ? indexProgressLabel(indexProgress, t)
+                      : t("indexingScanning")}
+                  </p>
+                )}
               </section>
 
               {data && (

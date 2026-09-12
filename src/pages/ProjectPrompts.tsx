@@ -11,7 +11,7 @@ import { PromptList } from "@/components/PromptList";
 import { Badge, CenterMessage, Skeleton } from "@/components/ui";
 import { useT, type DictKey } from "@/i18n";
 import type { SessionSummary, SortMode } from "@/lib/types";
-import { absoluteTime, cn, formatNumber } from "@/lib/utils";
+import { absoluteTime, cn, formatNumber, pathBasename } from "@/lib/utils";
 import { errMessage } from "@/lib/api";
 import { AgentBadge, AgentFilterControl } from "@/components/AgentBadge";
 
@@ -106,7 +106,7 @@ function SessionRow({
 export function ProjectPrompts() {
   const params = useParams();
   const projectPath = params.encoded ?? "";
-  const name = projectPath.split("/").filter(Boolean).pop() || projectPath;
+  const name = pathBasename(projectPath);
 
   // 「当前文件夹」由 Layout 根据路由统一登记
   const { includeCommands, projectAgentFilter, setProjectAgentFilter } =

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Check, Download, FolderOpen, SearchX } from "lucide-react";
 import { useStore } from "@/store";
 import { useSearch } from "@/hooks/queries";
@@ -7,27 +8,38 @@ import { AgentFilterControl } from "@/components/AgentBadge";
 import { Button, CenterMessage, Spinner } from "@/components/ui";
 import { api, errMessage } from "@/lib/api";
 import { getCurrentLang, useT } from "@/i18n";
-import { formatNumber } from "@/lib/utils";
-import type { ExportResult } from "@/lib/types";
+import { buildSearchUrl, parseSearchParams } from "@/lib/search";
+import { formatNumber, pathBasename } from "@/lib/utils";
+import type { AgentFilter, ExportResult } from "@/lib/types";
 
+/** 搜索结果页。所有状态来自 URL 查询参数，返回键与刷新都能恢复。 */
 export function SearchResults() {
-  const {
-    searchAgentFilter,
-    setSearchAgentFilter,
-    query,
-    scope,
-    currentProject,
-    currentProjectName,
-    includeCommands,
-  } = useStore();
+  const { includeCommands, setQuery } = useStore();
   const t = useT();
-  const projectFilter = scope === "folder" ? currentProject : null;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const urlState = useMemo(
+    () => parseSearchParams(location.search),
+    [location.search]
+  );
+  const { q, scope, project, agent } = urlState;
+
+  // URL 变化（输入、返回键、直接打开链接）时同步顶栏输入框
+  useEffect(() => {
+    setQuery(q);
+  }, [q, setQuery]);
+
+  const projectFilter = scope === "folder" ? project : null;
+  const folderName = projectFilter ? pathBasename(projectFilter) : null;
   const { data, isLoading, isError, error, debouncedQuery } = useSearch(
-    query,
+    q,
     projectFilter,
     includeCommands,
-    searchAgentFilter
+    agent
   );
+
+  const setAgent = (next: AgentFilter) =>
+    navigate(buildSearchUrl({ ...urlState, agent: next }), { replace: true });
 
   // memo 保持引用稳定：PromptList 以 items 引用变化作为重置分批的信号
   const items: PromptListItem[] = useMemo(
@@ -43,7 +55,7 @@ export function SearchResults() {
   useEffect(() => {
     setExportResult(null);
     setExportError(null);
-  }, [searchAgentFilter, debouncedQuery, includeCommands, projectFilter]);
+  }, [agent, debouncedQuery, includeCommands, projectFilter]);
 
   const handleExport = async () => {
     if (!debouncedQuery || exporting) return;
@@ -55,7 +67,7 @@ export function SearchResults() {
         query: debouncedQuery,
         projectFilter,
         includeCommands,
-        agentFilter: searchAgentFilter,
+        agentFilter: agent,
         write: true,
         lang: getCurrentLang(),
       });
@@ -85,8 +97,8 @@ export function SearchResults() {
             {t("searchResultsTitle")}
           </h1>
           <p className="mt-0.5 truncate text-xs text-muted">
-            {scope === "folder" && currentProjectName
-              ? t("searchInFolder", { name: currentProjectName })
+            {folderName
+              ? t("searchInFolder", { name: folderName })
               : t("globalSearch")}
             {debouncedQuery &&
               ` · ${t("searchKeyword", { keyword: debouncedQuery })}`}
@@ -100,8 +112,8 @@ export function SearchResults() {
               {t("searchAgentSource")}
             </span>
             <AgentFilterControl
-              value={searchAgentFilter}
-              onChange={setSearchAgentFilter}
+              value={agent}
+              onChange={setAgent}
               ariaLabel={t("searchAgentSource")}
             />
           </div>
@@ -134,7 +146,7 @@ export function SearchResults() {
               count: formatNumber(exportResult.promptCount),
             })}{" "}
             <span className="font-medium" title={exportResult.path}>
-              {exportResult.path.split("/").pop()}
+              {pathBasename(exportResult.path)}
             </span>
           </span>
           <button
@@ -147,7 +159,12 @@ export function SearchResults() {
         </div>
       )}
 
-      {isLoading ? (
+      {!debouncedQuery ? (
+        <CenterMessage
+          icon={<SearchX size={28} />}
+          title={t("searchEmptyQuery")}
+        />
+      ) : isLoading ? (
         <CenterMessage
           icon={<Spinner className="h-6 w-6" />}
           title={t("searching")}
@@ -168,7 +185,7 @@ export function SearchResults() {
         <PromptList
           items={items}
           showProject={scope === "global"}
-          showAgentBadge={searchAgentFilter === "all"}
+          showAgentBadge={agent === "all"}
         />
       )}
     </div>

@@ -60,11 +60,28 @@ export function formatTokens(n: number): string {
   return String(v);
 }
 
-/** 把绝对路径压缩为可读短路径：/Users/xxx/... → ~/... */
+/** 把绝对路径压缩为可读短路径：/Users/xxx/... 与 C:\Users\xxx\... → ~... */
 export function prettyPath(path: string): string {
   if (!path) return "";
-  return path.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
+  return path
+    .replace(/^\/Users\/[^/]+/, "~")
+    .replace(/^\/home\/[^/]+/, "~")
+    .replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+/, "~");
 }
+
+/** 路径最后一段，同时接受 / 与 \ 分隔符 */
+export function pathBasename(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : path;
+}
+
+/** 当前是否 macOS（决定快捷键修饰键） */
+export const isMac =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+/** 快捷键提示里的修饰键标签 */
+export const modKeyLabel = isMac ? "⌘" : "Ctrl";
 
 /** react-router 路由参数编码 */
 export function encodePath(path: string): string {

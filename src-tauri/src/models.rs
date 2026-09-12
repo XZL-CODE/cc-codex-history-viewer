@@ -58,6 +58,9 @@ pub struct PromptEntry {
     pub timestamp: i64,
     pub origin: PromptOrigin,
     pub session_id: Option<String>,
+    /// True when the session file behind `session_id` exists in the index.
+    #[serde(default)]
+    pub has_conversation: bool,
     pub git_branch: Option<String>,
     pub is_command: bool,
     pub pasted_count: usize,
@@ -139,6 +142,9 @@ pub struct ContentBlock {
     pub text: Option<String>,
     pub tool_name: Option<String>,
     pub tool_input: Option<serde_json::Value>,
+    /// True when `text` was cut at the display limit.
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,6 +211,26 @@ pub struct IndexMeta {
     pub from_cache: bool,
     pub source_files: usize,
     pub reparsed_files: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IndexPhase {
+    Scanning,
+    Parsing,
+    Assembling,
+    Done,
+}
+
+/// Payload of the `index-progress` event emitted while an index builds.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexProgress {
+    pub phase: IndexPhase,
+    /// Files parsed so far in the `parsing` phase.
+    pub done: usize,
+    /// Files that need parsing in this build (0 while scanning).
+    pub total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

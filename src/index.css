@@ -110,3 +110,16 @@ select {
   background: var(--accent);
   color: var(--accent-fg);
 }
+
+/* 索引构建时的不定长进度条 */
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.progress-indeterminate {
+  animation: progress-slide 1.2s ease-in-out infinite;
+}

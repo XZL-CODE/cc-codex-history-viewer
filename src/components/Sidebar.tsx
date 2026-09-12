@@ -13,19 +13,16 @@ function NavigationItem({
   end,
   icon,
   children,
-  onClick,
 }: {
   to: string;
   end?: boolean;
   icon: ReactNode;
   children: ReactNode;
-  onClick: () => void;
 }) {
   return (
     <NavLink
       to={to}
       end={end}
-      onClick={onClick}
       className={({ isActive }) =>
         cn(
           "relative flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium transition-colors",
@@ -52,12 +49,8 @@ function NavigationItem({
 }
 
 export function Sidebar() {
-  const {
-    sidebarAgentFilter,
-    setSidebarAgentFilter,
-    setProjectAgentFilter,
-    setQuery,
-  } = useStore();
+  const { sidebarAgentFilter, setSidebarAgentFilter, setProjectAgentFilter } =
+    useStore();
   const { data: projects, isLoading } = useProjects(sidebarAgentFilter);
   const t = useT();
   const [filter, setFilter] = useState("");
@@ -76,19 +69,10 @@ export function Sidebar() {
   return (
     <aside className="flex min-h-0 min-w-0 flex-col border-r border-border bg-surface">
       <nav className="grid shrink-0 gap-1 px-2.5 pb-2 pt-2.5">
-        <NavigationItem
-          to="/"
-          end
-          icon={<Home size={16} />}
-          onClick={() => setQuery("")}
-        >
+        <NavigationItem to="/" end icon={<Home size={16} />}>
           {t("navHome")}
         </NavigationItem>
-        <NavigationItem
-          to="/export"
-          icon={<Download size={16} />}
-          onClick={() => setQuery("")}
-        >
+        <NavigationItem to="/export" icon={<Download size={16} />}>
           {t("navExport")}
         </NavigationItem>
       </nav>
@@ -153,10 +137,7 @@ export function Sidebar() {
             <NavLink
               key={project.path}
               to={`/project/${encodePath(project.path)}`}
-              onClick={() => {
-                setQuery("");
-                setProjectAgentFilter("all");
-              }}
+              onClick={() => setProjectAgentFilter("all")}
               title={project.path}
               className={({ isActive }) =>
                 cn(

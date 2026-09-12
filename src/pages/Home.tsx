@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BarChart3, ListTree } from "lucide-react";
+import { AlertTriangle, BarChart3, ListTree, Settings } from "lucide-react";
 import { useStore } from "@/store";
 import { useIndexMeta, useRecentPrompts, useStats } from "@/hooks/queries";
 import { StatsOverview } from "@/components/StatsOverview";
@@ -8,6 +8,7 @@ import { ActivityChart, HourChart, WeekdayChart } from "@/components/Charts";
 import { TokenStats } from "@/components/TokenStats";
 import { PromptList } from "@/components/PromptList";
 import {
+  Button,
   Card,
   CardContent,
   CardHeader,
@@ -15,6 +16,7 @@ import {
   CenterMessage,
   Skeleton,
 } from "@/components/ui";
+import { indexProgressLabel } from "@/components/IndexProgress";
 import { errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
 import { absoluteTime, encodePath, formatNumber } from "@/lib/utils";
@@ -76,7 +78,13 @@ function TopProjectsList({ data }: { data: ProjectCount[] }) {
 }
 
 export function Home() {
-  const { agentFilter, includeCommands, setAgentFilter } = useStore();
+  const {
+    agentFilter,
+    includeCommands,
+    setAgentFilter,
+    indexProgress,
+    openSettings,
+  } = useStore();
   const t = useT();
   const statsQ = useStats(agentFilter);
   const metaQ = useIndexMeta();
@@ -87,6 +95,32 @@ export function Home() {
     [recentQ.data]
   );
 
+  // 索引元信息行：构建中显示进度，否则显示文件数、构建时间、缓存状态与最新 CLI 版本。
+  const metaLine = useMemo(() => {
+    if (indexProgress) return indexProgressLabel(indexProgress, t);
+    if (!metaQ.data) return t("loadingLocalData");
+    const parts = [
+      t("indexMetaSummary", {
+        files: formatNumber(metaQ.data.sourceFiles),
+        time: absoluteTime(metaQ.data.builtAt),
+      }),
+      metaQ.data.fromCache ? t("indexFromCache") : t("indexFreshScan"),
+    ];
+    if (metaQ.data.reparsedFiles > 0) {
+      parts.push(
+        t("indexReparsedFiles", {
+          count: formatNumber(metaQ.data.reparsedFiles),
+        })
+      );
+    }
+    const versions = statsQ.data?.cliVersions ?? [];
+    const claude = versions.find((entry) => entry.agent === "claude");
+    const codex = versions.find((entry) => entry.agent === "codex");
+    if (claude) parts.push(t("cliVersionClaude", { version: claude.version }));
+    if (codex) parts.push(t("cliVersionCodex", { version: codex.version }));
+    return parts.join(" · ");
+  }, [indexProgress, metaQ.data, statsQ.data?.cliVersions, t]);
+
   return (
     <div className="page-content space-y-5 py-6">
       <header className="flex items-start justify-between gap-5">
@@ -94,26 +128,7 @@ export function Home() {
           <h1 className="text-xl font-semibold text-foreground">
             {t("overviewTitle")}
           </h1>
-          <p className="mt-0.5 text-xs text-muted">
-            {metaQ.data
-              ? [
-                  t("indexMetaSummary", {
-                    files: formatNumber(metaQ.data.sourceFiles),
-                    time: absoluteTime(metaQ.data.builtAt),
-                  }),
-                  metaQ.data.fromCache
-                    ? t("indexFromCache")
-                    : t("indexFreshScan"),
-                  ...(metaQ.data.reparsedFiles > 0
-                    ? [
-                        t("indexReparsedFiles", {
-                          count: formatNumber(metaQ.data.reparsedFiles),
-                        }),
-                      ]
-                    : []),
-                ].join(" · ")
-              : t("loadingLocalData")}
-          </p>
+          <p className="mt-0.5 text-xs text-muted">{metaLine}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs font-medium text-muted max-[1080px]:hidden">
@@ -134,6 +149,21 @@ export function Home() {
           icon={<AlertTriangle size={28} />}
           title={t("cannotLoadData")}
           hint={t("cannotLoadDataHint", { error: errMessage(statsQ.error) })}
+          action={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void statsQ.refetch()}
+              >
+                {t("retry")}
+              </Button>
+              <Button size="sm" onClick={openSettings}>
+                <Settings size={14} />
+                {t("openSettings")}
+              </Button>
+            </div>
+          }
         />
       ) : statsQ.data ? (
         <>

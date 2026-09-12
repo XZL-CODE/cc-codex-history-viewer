@@ -1,4 +1,7 @@
 //! 暴露给前端的 Tauri Commands。
+//!
+//! 所有会触碰索引或会话文件的 command 都是 async：索引构建与会话解析在 Tauri 的阻塞线程池中
+//! 执行，不会卡住主线程；构建期间通过 `index-progress` 事件向前端汇报进度。
 
 use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
@@ -7,7 +10,12 @@ use crate::state::{self, load_settings, resolve_data_paths, resolve_from_setting
 use crate::{codex_parser, parser};
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager, State};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+/// Event name for index build progress; the payload is an [`IndexProgress`].
+pub const INDEX_PROGRESS_EVENT: &str = "index-progress";
 
 /// Agent-aware, file-level cache owned by this application.
 fn cache_file(app: &AppHandle) -> Option<PathBuf> {
@@ -29,12 +37,42 @@ fn cleanup_legacy_cache(app: &AppHandle) {
     }
 }
 
-/// 确保索引已构建（懒加载）
-fn ensure_index(state: &AppState, app: &AppHandle) -> Result<(), String> {
-    let mut guard = state.index.lock().map_err(|e| e.to_string())?;
-    if guard.is_some() {
-        return Ok(());
+/// Throttled progress emitter shared by the parser worker threads.
+struct ProgressReporter {
+    app: AppHandle,
+    last_emit: Mutex<Option<Instant>>,
+}
+
+impl ProgressReporter {
+    const MIN_INTERVAL: Duration = Duration::from_millis(80);
+
+    fn new(app: AppHandle) -> Self {
+        Self {
+            app,
+            last_emit: Mutex::new(None),
+        }
     }
+
+    fn report(&self, progress: IndexProgress) {
+        let boundary = progress.phase != IndexPhase::Parsing
+            || progress.done == 0
+            || progress.done == progress.total;
+        {
+            let mut last = self
+                .last_emit
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if !boundary && last.is_some_and(|at| at.elapsed() < Self::MIN_INTERVAL) {
+                return;
+            }
+            *last = Some(Instant::now());
+        }
+        let _ = self.app.emit(INDEX_PROGRESS_EVENT, progress);
+    }
+}
+
+/// Build (or incrementally refresh) the index on the blocking thread pool.
+async fn build_index(app: &AppHandle, force: bool) -> Result<AppIndex, String> {
     let paths = resolve_data_paths(app)?;
     let claude_exists = paths.claude.history.is_file() || paths.claude.projects.is_dir();
     let codex_exists = paths.codex.history.is_file()
@@ -49,19 +87,46 @@ fn ensure_index(state: &AppState, app: &AppHandle) -> Result<(), String> {
     }
     cleanup_legacy_cache(app);
     let cache = cache_file(app);
-    *guard = Some(indexer::load_or_build(&paths, cache.as_deref()));
-    Ok(())
+    let reporter = ProgressReporter::new(app.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        indexer::build_with_progress(&paths, cache.as_deref(), force, &|progress| {
+            reporter.report(progress)
+        })
+    })
+    .await
+    .map_err(|error| format!("Index build task failed: {error}"))
 }
 
-/// 在索引上执行只读闭包
-fn read_index<F, R>(state: &AppState, app: &AppHandle, f: F) -> Result<R, String>
+/// 确保索引已构建（懒加载）。并发调用共享同一次构建，而不是各自重建。
+async fn ensure_index(state: &AppState, app: &AppHandle) -> Result<Arc<AppIndex>, String> {
+    if let Some(index) = state.index.read().await.as_ref() {
+        return Ok(Arc::clone(index));
+    }
+    let _build = state.build_lock.lock().await;
+    if let Some(index) = state.index.read().await.as_ref() {
+        return Ok(Arc::clone(index));
+    }
+    let index = Arc::new(build_index(app, false).await?);
+    *state.index.write().await = Some(Arc::clone(&index));
+    Ok(index)
+}
+
+/// 在索引快照上执行只读闭包
+async fn read_index<F, R>(state: &AppState, app: &AppHandle, f: F) -> Result<R, String>
 where
     F: FnOnce(&AppIndex) -> R,
 {
-    ensure_index(state, app)?;
-    let guard = state.index.lock().map_err(|e| e.to_string())?;
-    let idx = guard.as_ref().ok_or("索引尚未就绪")?;
-    Ok(f(idx))
+    let index = ensure_index(state, app).await?;
+    Ok(f(&index))
+}
+
+fn index_meta(index: &AppIndex) -> IndexMeta {
+    IndexMeta {
+        built_at: index.built_at,
+        from_cache: index.from_cache,
+        source_files: index.source_files,
+        reparsed_files: index.reparsed_files,
+    }
 }
 
 fn sort_prompts(v: &mut [PromptEntry], sort: Option<&str>) {
@@ -74,18 +139,18 @@ fn sort_prompts(v: &mut [PromptEntry], sort: Option<&str>) {
 
 /// 文件夹（项目）列表
 #[tauri::command]
-pub fn get_projects(
+pub async fn get_projects(
     agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<ProjectInfo>, String> {
     let filter = agent_filter.unwrap_or_default();
-    read_index(&state, &app, |idx| idx.projects_for(filter).to_vec())
+    read_index(&state, &app, |idx| idx.projects_for(filter).to_vec()).await
 }
 
 /// 指定文件夹下的 prompt 列表
 #[tauri::command]
-pub fn get_project_prompts(
+pub async fn get_project_prompts(
     project: String,
     sort: Option<String>,
     include_commands: Option<bool>,
@@ -107,11 +172,12 @@ pub fn get_project_prompts(
         sort_prompts(&mut v, sort.as_deref());
         v
     })
+    .await
 }
 
 /// 全局最近的 prompt（已按时间倒序）
 #[tauri::command]
-pub fn get_recent_prompts(
+pub async fn get_recent_prompts(
     limit: Option<usize>,
     include_commands: Option<bool>,
     agent_filter: Option<AgentFilter>,
@@ -130,11 +196,12 @@ pub fn get_recent_prompts(
             .cloned()
             .collect()
     })
+    .await
 }
 
 /// 模糊搜索（全局 / 文件夹内）
 #[tauri::command]
-pub fn search_prompts(
+pub async fn search_prompts(
     query: String,
     project_filter: Option<String>,
     include_commands: Option<bool>,
@@ -147,22 +214,23 @@ pub fn search_prompts(
     read_index(&state, &app, |idx| {
         indexer::search(&idx.prompts, &query, project_filter.as_deref(), inc, filter)
     })
+    .await
 }
 
 /// 统计信息
 #[tauri::command]
-pub fn get_stats(
+pub async fn get_stats(
     agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<AppStats, String> {
     let filter = agent_filter.unwrap_or_default();
-    read_index(&state, &app, |idx| idx.stats_for(filter).clone())
+    read_index(&state, &app, |idx| idx.stats_for(filter).clone()).await
 }
 
 /// 指定文件夹下的会话列表
 #[tauri::command]
-pub fn get_project_sessions(
+pub async fn get_project_sessions(
     project: String,
     agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
@@ -180,66 +248,69 @@ pub fn get_project_sessions(
         v.sort_by_key(|session| Reverse(session.started_at));
         v
     })
+    .await
 }
 
-/// 按 sessionId 找到对话文件路径
-fn session_file(
+/// 按 (agent, sessionId) 找到对话文件路径
+async fn session_file(
     state: &AppState,
     app: &AppHandle,
     agent: Agent,
     session_id: &str,
 ) -> Result<String, String> {
-    ensure_index(state, app)?;
-    let guard = state.index.lock().map_err(|e| e.to_string())?;
-    let idx = guard.as_ref().ok_or("索引尚未就绪")?;
-    idx.session_files
+    let index = ensure_index(state, app).await?;
+    index
+        .session_files
         .get(&(agent, session_id.to_string()))
         .cloned()
         .ok_or_else(|| format!("Conversation not found: {}:{session_id}", agent.as_str()))
 }
 
+/// 在阻塞线程池中解析单个会话文件的完整内容
+async fn parse_detail(agent: Agent, file: String) -> Result<ConversationDetail, String> {
+    tauri::async_runtime::spawn_blocking(move || match agent {
+        Agent::Claude => parser::parse_conversation_detail(Path::new(&file)),
+        Agent::Codex => codex_parser::parse_rollout_detail(Path::new(&file)),
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| "对话文件解析失败".to_string())
+}
+
 /// 单个会话的完整对话详情
 #[tauri::command]
-pub fn get_conversation(
+pub async fn get_conversation(
     session_id: String,
     agent: Option<Agent>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ConversationDetail, String> {
     let agent = agent.unwrap_or(Agent::Claude);
-    let file = session_file(&state, &app, agent, &session_id)?;
-    match agent {
-        Agent::Claude => parser::parse_conversation_detail(Path::new(&file)),
-        Agent::Codex => codex_parser::parse_rollout_detail(Path::new(&file)),
-    }
-    .ok_or_else(|| "对话文件解析失败".to_string())
+    let file = session_file(&state, &app, agent, &session_id).await?;
+    parse_detail(agent, file).await
 }
 
 /// 索引元信息
 #[tauri::command]
-pub fn get_index_meta(state: State<'_, AppState>, app: AppHandle) -> Result<IndexMeta, String> {
-    read_index(&state, &app, |idx| IndexMeta {
-        built_at: idx.built_at,
-        from_cache: idx.from_cache,
-        source_files: idx.source_files,
-        reparsed_files: idx.reparsed_files,
-    })
+pub async fn get_index_meta(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<IndexMeta, String> {
+    read_index(&state, &app, index_meta).await
 }
 
-/// 强制重建索引（忽略缓存全量重解析）
+/// 重建索引。默认增量：只重解析指纹变化的文件；`full=true` 时忽略缓存全量重解析。
+/// 重建期间旧索引继续可用，完成后原子替换。
 #[tauri::command]
-pub fn refresh_index(state: State<'_, AppState>, app: AppHandle) -> Result<IndexMeta, String> {
-    let paths = resolve_data_paths(&app)?;
-    let cache = cache_file(&app);
-    let idx = indexer::build_and_cache(&paths, cache.as_deref());
-    let meta = IndexMeta {
-        built_at: idx.built_at,
-        from_cache: false,
-        source_files: idx.source_files,
-        reparsed_files: idx.reparsed_files,
-    };
-    let mut guard = state.index.lock().map_err(|e| e.to_string())?;
-    *guard = Some(idx);
+pub async fn refresh_index(
+    full: Option<bool>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<IndexMeta, String> {
+    let _build = state.build_lock.lock().await;
+    let index = build_index(&app, full.unwrap_or(false)).await?;
+    let meta = index_meta(&index);
+    *state.index.write().await = Some(Arc::new(index));
     Ok(meta)
 }
 
@@ -287,16 +358,13 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsView, String> {
 
 /// 保存设置并使索引失效（下次查询时按新数据源懒重建）
 #[tauri::command]
-pub fn set_settings(
+pub async fn set_settings(
     settings: SettingsInput,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<SettingsView, String> {
     let path = state::save_settings(&app, &settings)?;
-    {
-        let mut guard = state.index.lock().map_err(|e| e.to_string())?;
-        *guard = None;
-    }
+    *state.index.write().await = None;
     settings_view(&settings, &path)
 }
 
@@ -306,7 +374,7 @@ pub fn set_settings(
 /// write=false 仅生成预览与统计；write=true 额外把完整 Markdown 写入 ~/Downloads。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn build_prompt_export(
+pub async fn build_prompt_export(
     start_date: String,
     end_date: String,
     project: Option<String>,
@@ -344,7 +412,8 @@ pub fn build_prompt_export(
                 agent_filter: filter,
             },
         )
-    })?;
+    })
+    .await?;
 
     let mut path: Option<String> = None;
     if write {
@@ -370,7 +439,7 @@ pub fn build_prompt_export(
 /// write=false 仅生成预览与统计；write=true 额外写入 ~/Downloads。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn export_search_results(
+pub async fn export_search_results(
     query: String,
     project_filter: Option<String>,
     include_commands: bool,
@@ -392,7 +461,8 @@ pub fn export_search_results(
         );
         let items: Vec<&PromptEntry> = results.iter().map(|r| &r.entry).collect();
         export::build_search_export(&items, &query, project_filter.as_deref(), lang)
-    })?;
+    })
+    .await?;
 
     let mut path: Option<String> = None;
     if write {
@@ -435,7 +505,7 @@ fn sanitize_for_filename(q: &str) -> String {
 /// 导出单个会话的完整对话为 Markdown。
 /// write=false 仅生成预览；write=true 额外写入 ~/Downloads。
 #[tauri::command]
-pub fn export_conversation(
+pub async fn export_conversation(
     session_id: String,
     agent: Option<Agent>,
     include_tools: bool,
@@ -445,12 +515,8 @@ pub fn export_conversation(
     app: AppHandle,
 ) -> Result<ConversationExportResult, String> {
     let agent = agent.unwrap_or(Agent::Claude);
-    let file = session_file(&state, &app, agent, &session_id)?;
-    let detail = match agent {
-        Agent::Claude => parser::parse_conversation_detail(Path::new(&file)),
-        Agent::Codex => codex_parser::parse_rollout_detail(Path::new(&file)),
-    }
-    .ok_or_else(|| "对话文件解析失败".to_string())?;
+    let file = session_file(&state, &app, agent, &session_id).await?;
+    let detail = parse_detail(agent, file).await?;
     let lang = Lang::from_opt(lang.as_deref());
     let markdown = export::build_conversation_markdown(&detail, include_tools, lang);
 

@@ -12,6 +12,8 @@ export interface PromptEntry {
   timestamp: number;
   origin: PromptOrigin;
   sessionId: string | null;
+  /** sessionId 对应的会话文件存在于索引中，可以打开详情 */
+  hasConversation: boolean;
   gitBranch: string | null;
   isCommand: boolean;
   pastedCount: number;
@@ -61,6 +63,8 @@ export interface ContentBlock {
   text: string | null;
   toolName: string | null;
   toolInput: unknown | null;
+  /** text 已按展示上限截断 */
+  truncated: boolean;
 }
 
 export interface ChatMessage {
@@ -167,6 +171,15 @@ export interface IndexMeta {
   fromCache: boolean;
   sourceFiles: number;
   reparsedFiles: number;
+}
+
+export type IndexPhase = "scanning" | "parsing" | "assembling" | "done";
+
+/** 后端 `index-progress` 事件的载荷 */
+export interface IndexProgress {
+  phase: IndexPhase;
+  done: number;
+  total: number;
 }
 
 export type SortMode = "newest" | "oldest" | "longest";
