@@ -1,5 +1,5 @@
 # 发布桌面安装包：macOS 通用 dmg（Apple Silicon + Intel）与 Windows exe/msi。
-# 触发方式：推送 v* 标签，或在 Actions 页面手动运行（可指定标签，默认 v<tauri.conf.json 版本>）。
+# 触发方式：推送 v* 标签，或在 Actions 页面手动运行；Release 标签取 v<tauri.conf.json 版本>。
 # 产物由 tauri-action 上传到同名 GitHub Release；应用未签名，说明见 Release 正文。
 name: Release desktop builds
 
@@ -7,11 +7,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag，留空则使用 v<版本号>"
-        required: false
-        default: ""
 
 permissions:
   contents: write
@@ -57,8 +52,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ inputs.tag || 'v__VERSION__' }}
-          releaseName: ${{ inputs.tag || 'v__VERSION__' }}
+          tagName: v__VERSION__
+          releaseName: Coding Agent History Viewer v__VERSION__
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
