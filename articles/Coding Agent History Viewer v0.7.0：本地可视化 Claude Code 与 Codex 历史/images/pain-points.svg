@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="440" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">直接翻原始文件的四个痛点</text>
+<rect x="20.0" y="76.0" width="270.0" height="340.0" rx="18" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="36.0" y="92.0" width="238.0" height="8.0" rx="4" fill="#FF6A00"/>
+<circle cx="60.0" cy="138.0" r="20" fill="#FF6A00"/>
+<text x="60.0" y="145.0" font-size="20" fill="#FFFFFF" font-weight="800" text-anchor="middle">1</text>
+<text x="92.0" y="146.0" font-size="22" fill="#1F2937" font-weight="800">找不到</text>
+<circle cx="46.0" cy="191.0" r="3.5" fill="#FF6A00"/>
+<text x="60.0" y="196.0" font-size="16" fill="#4B5563">目录名是编码后的路径</text>
+<circle cx="46.0" cy="227.0" r="3.5" fill="#FF6A00"/>
+<text x="60.0" y="232.0" font-size="16" fill="#4B5563">文件名是一串 UUID</text>
+<circle cx="46.0" cy="263.0" r="3.5" fill="#FF6A00"/>
+<text x="60.0" y="268.0" font-size="16" fill="#4B5563">想找上周那次对话</text>
+<circle cx="46.0" cy="299.0" r="3.5" fill="#FF6A00"/>
+<text x="60.0" y="304.0" font-size="16" fill="#4B5563">只能对着 JSON 用 grep</text>
+<rect x="36.0" y="352.0" width="238.0" height="44.0" rx="10" fill="#FFF1E3"/>
+<text x="46.0" y="380.0" font-size="14" fill="#FF6A00" font-weight="700">→ 按目录聚合、全文搜索</text>
+<rect x="317.0" y="76.0" width="270.0" height="340.0" rx="18" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="333.0" y="92.0" width="238.0" height="8.0" rx="4" fill="#2F80ED"/>
+<circle cx="357.0" cy="138.0" r="20" fill="#2F80ED"/>
+<text x="357.0" y="145.0" font-size="20" fill="#FFFFFF" font-weight="800" text-anchor="middle">2</text>
+<text x="389.0" y="146.0" font-size="22" fill="#1F2937" font-weight="800">看不清</text>
+<circle cx="343.0" cy="191.0" r="3.5" fill="#2F80ED"/>
+<text x="357.0" y="196.0" font-size="16" fill="#4B5563">工具结果占了大部分体积</text>
+<circle cx="343.0" cy="227.0" r="3.5" fill="#2F80ED"/>
+<text x="357.0" y="232.0" font-size="16" fill="#4B5563">真正的对话被淹没其中</text>
+<circle cx="343.0" cy="263.0" r="3.5" fill="#2F80ED"/>
+<text x="357.0" y="268.0" font-size="16" fill="#4B5563">助手回复是 Markdown 源码</text>
+<circle cx="343.0" cy="299.0" r="3.5" fill="#2F80ED"/>
+<text x="357.0" y="304.0" font-size="16" fill="#4B5563">代码块和表格糊成一团</text>
+<rect x="333.0" y="352.0" width="238.0" height="44.0" rx="10" fill="#EAF3FF"/>
+<text x="343.0" y="380.0" font-size="14" fill="#2F80ED" font-weight="700">→ Markdown 与语义化工具渲染</text>
+<rect x="614.0" y="76.0" width="270.0" height="340.0" rx="18" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="630.0" y="92.0" width="238.0" height="8.0" rx="4" fill="#27AE60"/>
+<circle cx="654.0" cy="138.0" r="20" fill="#27AE60"/>
+<text x="654.0" y="145.0" font-size="20" fill="#FFFFFF" font-weight="800" text-anchor="middle">3</text>
+<text x="686.0" y="146.0" font-size="22" fill="#1F2937" font-weight="800">算不准</text>
+<circle cx="640.0" cy="191.0" r="3.5" fill="#27AE60"/>
+<text x="654.0" y="196.0" font-size="16" fill="#4B5563">用量散落在每条消息里</text>
+<circle cx="640.0" cy="227.0" r="3.5" fill="#27AE60"/>
+<text x="654.0" y="232.0" font-size="16" fill="#4B5563">fork / resume 复制旧消息</text>
+<circle cx="640.0" cy="263.0" r="3.5" fill="#27AE60"/>
+<text x="654.0" y="268.0" font-size="16" fill="#4B5563">直接求和会重复计数</text>
+<circle cx="640.0" cy="299.0" r="3.5" fill="#27AE60"/>
+<text x="654.0" y="304.0" font-size="16" fill="#4B5563">缓存读、缓存写、输出价格不同</text>
+<rect x="630.0" y="352.0" width="238.0" height="44.0" rx="10" fill="#E9F9EF"/>
+<text x="640.0" y="380.0" font-size="14" fill="#27AE60" font-weight="700">→ 去重指纹与会话归属</text>
+<rect x="911.0" y="76.0" width="270.0" height="340.0" rx="18" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="927.0" y="92.0" width="238.0" height="8.0" rx="4" fill="#9B51E0"/>
+<circle cx="951.0" cy="138.0" r="20" fill="#9B51E0"/>
+<text x="951.0" y="145.0" font-size="20" fill="#FFFFFF" font-weight="800" text-anchor="middle">4</text>
+<text x="983.0" y="146.0" font-size="22" fill="#1F2937" font-weight="800">两套格式</text>
+<circle cx="937.0" cy="191.0" r="3.5" fill="#9B51E0"/>
+<text x="951.0" y="196.0" font-size="16" fill="#4B5563">Claude 与 Codex 结构不同</text>
+<circle cx="937.0" cy="227.0" r="3.5" fill="#9B51E0"/>
+<text x="951.0" y="232.0" font-size="16" fill="#4B5563">时间戳有秒也有毫秒</text>
+<circle cx="937.0" cy="263.0" r="3.5" fill="#9B51E0"/>
+<text x="951.0" y="268.0" font-size="16" fill="#4B5563">Codex input 已含 cached</text>
+<circle cx="937.0" cy="299.0" r="3.5" fill="#9B51E0"/>
+<text x="951.0" y="304.0" font-size="16" fill="#4B5563">想放一起看得先归一化</text>
+<rect x="927.0" y="352.0" width="238.0" height="44.0" rx="10" fill="#F3ECFC"/>
+<text x="937.0" y="380.0" font-size="14" fill="#9B51E0" font-weight="700">→ 统一中间记录与口径</text>
+</svg>

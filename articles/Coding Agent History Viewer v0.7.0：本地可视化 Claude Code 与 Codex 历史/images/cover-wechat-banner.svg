@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1410" height="600" viewBox="0 0 1410 600" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFF6EA"/><stop offset="1" stop-color="#FFE7CF"/></linearGradient><linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF6A00"/><stop offset="1" stop-color="#FFB020"/></linearGradient><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1410" height="600" fill="#FFFFFF"/>
+<rect x="0.0" y="0.0" width="1410.0" height="600.0" rx="0" fill="url(#bg)"/>
+<circle cx="150.0" cy="300.0" r="210" fill="#FFB020" opacity="0.22"/>
+<circle cx="1270.0" cy="300.0" r="230" fill="#56CCF2" opacity="0.22"/>
+<circle cx="1310.0" cy="70.0" r="70" fill="#6FCF97" opacity="0.35"/>
+<circle cx="90.0" cy="540.0" r="60" fill="#9B51E0" opacity="0.18"/>
+<text x="0" y="0" font-size="26" fill="#C2410C" opacity="0.55" font-weight="600" text-anchor="middle" transform="translate(150,300) rotate(-90)">本地 · 只读 · 不联网</text>
+<text x="0" y="0" font-size="26" fill="#1D4ED8" opacity="0.5" font-weight="600" text-anchor="middle" transform="translate(1262,300) rotate(-90)">Claude Code · Codex</text>
+<rect x="575.6" y="66.0" width="258.8" height="42.0" rx="21" fill="url(#acc)"/>
+<text x="705.0" y="94.0" font-size="20" fill="#FFFFFF" font-weight="700" text-anchor="middle">v0.7.0 发布 · 桌面应用</text>
+<text x="705.0" y="208.0" font-size="56" fill="#1F2937" font-weight="800" text-anchor="middle">Claude Code 历史</text>
+<text x="705.0" y="282.0" font-size="56" fill="#1F2937" font-weight="800" text-anchor="middle">终于能搜了</text>
+<rect x="625.0" y="302.0" width="160.0" height="8.0" rx="4" fill="url(#acc)"/>
+<text x="705.0" y="354.0" font-size="24" fill="#4B5563" font-weight="600" text-anchor="middle">全文搜索 · 每会话成本 · 活跃度热力图</text>
+<rect x="430.0" y="392.0" width="170.0" height="80.0" rx="16" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<circle cx="464.0" cy="432.0" r="18" fill="#FF6A00"/>
+<text x="464.0" y="439.0" font-size="18" fill="#FFFFFF" font-weight="800" text-anchor="middle">搜</text>
+<text x="494.0" y="439.0" font-size="20" fill="#9A3412" font-weight="700">全文搜索</text>
+<rect x="620.0" y="392.0" width="170.0" height="80.0" rx="16" fill="#EAF3FF" stroke="#2F80ED" stroke-width="2"/>
+<circle cx="654.0" cy="432.0" r="18" fill="#2F80ED"/>
+<text x="654.0" y="439.0" font-size="18" fill="#FFFFFF" font-weight="800" text-anchor="middle">算</text>
+<text x="684.0" y="439.0" font-size="20" fill="#1E3A8A" font-weight="700">会话成本</text>
+<rect x="810.0" y="392.0" width="170.0" height="80.0" rx="16" fill="#E9F9EF" stroke="#27AE60" stroke-width="2"/>
+<circle cx="844.0" cy="432.0" r="18" fill="#27AE60"/>
+<text x="844.0" y="439.0" font-size="18" fill="#FFFFFF" font-weight="800" text-anchor="middle">读</text>
+<text x="874.0" y="439.0" font-size="20" fill="#14532D" font-weight="700">详情好读</text>
+<text x="705.0" y="540.0" font-size="22" fill="#9A3412" font-weight="600" text-anchor="middle">逐梦苍穹 · 龙哥AI</text>
+<text x="705.0" y="572.0" font-size="16" fill="#B45309" text-anchor="middle">GitHub · XZL-CODE/cc-history-viewer</text>
+</svg>

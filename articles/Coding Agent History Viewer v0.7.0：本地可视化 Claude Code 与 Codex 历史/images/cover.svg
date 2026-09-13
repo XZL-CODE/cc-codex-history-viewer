@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF6EA"/><stop offset="1" stop-color="#FFE1BF"/></linearGradient><linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF6A00"/><stop offset="1" stop-color="#FFB020"/></linearGradient><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="675" fill="#FFFFFF"/>
+<rect x="0.0" y="0.0" width="1200.0" height="675.0" rx="0" fill="url(#bg)"/>
+<circle cx="1090.0" cy="60.0" r="170" fill="#FFB020" opacity="0.22"/>
+<circle cx="90.0" cy="640.0" r="150" fill="#56CCF2" opacity="0.22"/>
+<circle cx="1165.0" cy="625.0" r="100" fill="#6FCF97" opacity="0.3"/>
+<rect x="72.0" y="66.0" width="176.0" height="42.0" rx="21" fill="url(#acc)"/>
+<text x="160.0" y="95.0" font-size="22" fill="#FFFFFF" font-weight="700" text-anchor="middle">v0.7.0 发布</text>
+<text x="72.0" y="178.0" font-size="58" fill="#1F2937" font-weight="800">Coding Agent</text>
+<text x="72.0" y="246.0" font-size="58" fill="#1F2937" font-weight="800">History Viewer</text>
+<rect x="72.0" y="268.0" width="120.0" height="8.0" rx="4" fill="url(#acc)"/>
+<text x="72.0" y="322.0" font-size="30" fill="#7C2D12" font-weight="600">本地看清 Claude Code 与 Codex 的</text>
+<text x="72.0" y="364.0" font-size="30" fill="#7C2D12" font-weight="600">对话历史、Token 成本与工具调用</text>
+<rect x="72.0" y="391.0" width="204.0" height="46.0" rx="23.0" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="174.0" y="421.2" font-size="20" fill="#9A3412" font-weight="700" text-anchor="middle">全文搜索会话内容</text>
+<rect x="292.0" y="391.0" width="234.7" height="46.0" rx="23.0" fill="#EAF3FF" stroke="#2F80ED" stroke-width="2"/>
+<text x="409.3" y="421.2" font-size="20" fill="#1E3A8A" font-weight="700" text-anchor="middle">每会话 Token 与成本</text>
+<rect x="542.7" y="391.0" width="162.0" height="46.0" rx="23.0" fill="#E9F9EF" stroke="#27AE60" stroke-width="2"/>
+<text x="623.7" y="421.2" font-size="20" fill="#14532D" font-weight="700" text-anchor="middle">活跃度热力图</text>
+<rect x="72.0" y="445.0" width="228.4" height="46.0" rx="23.0" fill="#EAF3FF" stroke="#2F80ED" stroke-width="2"/>
+<text x="186.2" y="475.2" font-size="20" fill="#1E3A8A" font-weight="700" text-anchor="middle">后台索引 · 增量刷新</text>
+<rect x="316.4" y="445.0" width="291.4" height="46.0" rx="23.0" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="462.0" y="475.2" font-size="20" fill="#9A3412" font-weight="700" text-anchor="middle">Markdown 渲染与代码高亮</text>
+<rect x="72.0" y="499.0" width="249.4" height="46.0" rx="23.0" fill="#E9F9EF" stroke="#27AE60" stroke-width="2"/>
+<text x="196.7" y="529.2" font-size="20" fill="#14532D" font-weight="700" text-anchor="middle">会话内查找 · 轮次大纲</text>
+<rect x="337.4" y="499.0" width="231.7" height="46.0" rx="23.0" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="453.2" y="529.2" font-size="20" fill="#9A3412" font-weight="700" text-anchor="middle">本地 · 只读 · 不联网</text>
+<rect x="585.1" y="499.0" width="168.3" height="46.0" rx="23.0" fill="#F3ECFC" stroke="#9B51E0" stroke-width="2"/>
+<text x="669.2" y="529.2" font-size="20" fill="#4C1D95" font-weight="700" text-anchor="middle">工具调用 diff</text>
+<text x="72.0" y="604.0" font-size="22" fill="#9A3412" font-weight="600">逐梦苍穹 · 龙哥AI</text>
+<text x="72.0" y="636.0" font-size="18" fill="#B45309">github.com/XZL-CODE/cc-history-viewer</text>
+<rect x="808.0" y="120.0" width="340.0" height="460.0" rx="20" fill="#FF6A00" opacity="0.15"/>
+<rect x="800.0" y="110.0" width="340.0" height="460.0" rx="20" fill="#FFFFFF" stroke="#FFD1A3" stroke-width="3"/>
+<circle cx="824.0" cy="134.0" r="6" fill="#FF5F57"/>
+<circle cx="844.0" cy="134.0" r="6" fill="#FEBC2E"/>
+<circle cx="864.0" cy="134.0" r="6" fill="#28C840"/>
+<text x="990.0" y="139.0" font-size="13" fill="#9CA3AF" text-anchor="middle">Coding Agent History Viewer</text>
+<rect x="800.0" y="152.0" width="340.0" height="1.0" rx="0" fill="#F3F4F6"/>
+<text x="824.0" y="181.0" font-size="14" fill="#374151" font-weight="700">活跃度日历</text>
+<rect x="824.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="824.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="824.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="824.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="824.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="824.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="824.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="843.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="843.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="843.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="843.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="843.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="843.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="843.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="862.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="862.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="862.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="862.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="862.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="862.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="862.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="881.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="881.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="881.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="881.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="881.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="881.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="881.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="900.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="900.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="900.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="900.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="900.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="900.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="900.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="919.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="919.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="919.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="919.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="919.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="919.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="919.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="938.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="938.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="938.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="938.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="938.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="938.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="938.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="957.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="957.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="957.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="957.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="957.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="957.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="957.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="976.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="976.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="976.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="976.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="976.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="976.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="976.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="995.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="995.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="995.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="995.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="995.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="995.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="995.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1014.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1014.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1014.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="1014.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="1014.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="1014.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="1014.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1033.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="1033.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="1033.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="1033.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1033.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="1033.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1033.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="1052.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="1052.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="1052.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="1052.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FF6A00"/>
+<rect x="1052.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1052.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1052.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#F3F4F6"/>
+<rect x="1071.0" y="192.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="1071.0" y="211.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<rect x="1071.0" y="230.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="1071.0" y="249.0" width="15.0" height="15.0" rx="3" fill="#FFC48A"/>
+<rect x="1071.0" y="268.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="1071.0" y="287.0" width="15.0" height="15.0" rx="3" fill="#FF9A45"/>
+<rect x="1071.0" y="306.0" width="15.0" height="15.0" rx="3" fill="#FFE8D1"/>
+<text x="824.0" y="352.0" font-size="14" fill="#374151" font-weight="700">会话</text>
+<rect x="936.0" y="362.0" width="184.0" height="34.0" rx="12" fill="#EAF3FF"/>
+<text x="950.0" y="384.0" font-size="13" fill="#1E3A8A">帮我修一下登录超时</text>
+<rect x="824.0" y="404.0" width="260.0" height="62.0" rx="12" fill="#FFF7ED" stroke="#FFD1A3" stroke-width="1.5"/>
+<text x="838.0" y="426.0" font-size="13" fill="#1F2937">先看 session.ts 的过期判断…</text>
+<rect x="838.0" y="438.0" width="112.0" height="18.0" rx="9" fill="#E9F9EF"/>
+<text x="894.0" y="451.0" font-size="11" fill="#14532D" font-weight="700" text-anchor="middle">Edit · 2 处修改</text>
+<rect x="824.0" y="484.0" width="292.0" height="34.0" rx="17" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="1.5"/>
+<circle cx="842" cy="500" r="6" fill="none" stroke="#4B5563" stroke-width="2"/><line x1="846.5" y1="504.5" x2="851" y2="509" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/>
+<text x="860.0" y="505.0" font-size="13" fill="#4B5563">搜索会话内容：rayon 并行</text>
+<text x="824.0" y="548.0" font-size="13" fill="#4B5563">估算成本</text>
+<text x="884.0" y="551.0" font-size="19" fill="#FF6A00" font-weight="800">$12.40</text>
+<text x="976.0" y="548.0" font-size="13" fill="#4B5563">缓存命中 78%</text>
+</svg>

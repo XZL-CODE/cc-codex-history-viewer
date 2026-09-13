@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="560" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">v0.7.0 的 12 项功能</text>
+<rect x="20.0" y="76.0" width="270.0" height="460.0" rx="18" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="40.0" y="116.0" font-size="22" fill="#9A3412" font-weight="800">基础体验</text>
+<text x="270.0" y="116.0" font-size="15" fill="#9A3412" text-anchor="end">4 项</text>
+<rect x="36.0" y="154.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#FF6A00" stroke-width="1.5"/>
+<circle cx="56.0" cy="176.0" r="11" fill="#FF6A00"/>
+<text x="56.0" y="181.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">1</text>
+<text x="74.0" y="181.0" font-size="15" fill="#1F2937" font-weight="600">后台索引与进度显示</text>
+<rect x="36.0" y="212.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#FF6A00" stroke-width="1.5"/>
+<circle cx="56.0" cy="234.0" r="11" fill="#FF6A00"/>
+<text x="56.0" y="239.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">2</text>
+<text x="74.0" y="239.0" font-size="15" fill="#1F2937" font-weight="600">增量刷新与全量重建</text>
+<rect x="36.0" y="270.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#FF6A00" stroke-width="1.5"/>
+<circle cx="56.0" cy="292.0" r="11" fill="#FF6A00"/>
+<text x="56.0" y="297.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">3</text>
+<text x="74.0" y="297.0" font-size="15" fill="#1F2937" font-weight="600">搜索改为独立路由</text>
+<rect x="36.0" y="328.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#FF6A00" stroke-width="1.5"/>
+<circle cx="56.0" cy="350.0" r="11" fill="#FF6A00"/>
+<text x="56.0" y="355.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">4</text>
+<text x="74.0" y="355.0" font-size="15" fill="#1F2937" font-weight="600">快捷键 · 窗口记忆 · 主题</text>
+<text x="40.0" y="480.0" font-size="14" fill="#6B7280">索引在后台线程构建</text>
+<text x="40.0" y="504.0" font-size="14" fill="#6B7280">重建期间旧索引继续服务</text>
+<rect x="317.0" y="76.0" width="270.0" height="460.0" rx="18" fill="#EAF3FF" stroke="#2F80ED" stroke-width="2"/>
+<text x="337.0" y="116.0" font-size="22" fill="#1E3A8A" font-weight="800">会话详情</text>
+<text x="567.0" y="116.0" font-size="15" fill="#1E3A8A" text-anchor="end">4 项</text>
+<rect x="333.0" y="154.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#2F80ED" stroke-width="1.5"/>
+<circle cx="353.0" cy="176.0" r="11" fill="#2F80ED"/>
+<text x="353.0" y="181.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">5</text>
+<text x="371.0" y="181.0" font-size="15" fill="#1F2937" font-weight="600">每会话 Token 与成本</text>
+<rect x="333.0" y="212.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#2F80ED" stroke-width="1.5"/>
+<circle cx="353.0" cy="234.0" r="11" fill="#2F80ED"/>
+<text x="353.0" y="239.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">6</text>
+<text x="371.0" y="239.0" font-size="15" fill="#1F2937" font-weight="600">Markdown 渲染与代码高亮</text>
+<rect x="333.0" y="270.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#2F80ED" stroke-width="1.5"/>
+<circle cx="353.0" cy="292.0" r="11" fill="#2F80ED"/>
+<text x="353.0" y="297.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">7</text>
+<text x="371.0" y="297.0" font-size="15" fill="#1F2937" font-weight="600">工具调用智能渲染</text>
+<rect x="333.0" y="328.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#2F80ED" stroke-width="1.5"/>
+<circle cx="353.0" cy="350.0" r="11" fill="#2F80ED"/>
+<text x="353.0" y="355.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">8</text>
+<text x="371.0" y="355.0" font-size="15" fill="#1F2937" font-weight="600">查找 · 大纲 · 分批渲染</text>
+<text x="337.0" y="480.0" font-size="14" fill="#6B7280">工具调用按语义展示</text>
+<text x="337.0" y="504.0" font-size="14" fill="#6B7280">正文只在展开时渲染</text>
+<rect x="614.0" y="76.0" width="270.0" height="460.0" rx="18" fill="#E9F9EF" stroke="#27AE60" stroke-width="2"/>
+<text x="634.0" y="116.0" font-size="22" fill="#14532D" font-weight="800">统计</text>
+<text x="864.0" y="116.0" font-size="15" fill="#14532D" text-anchor="end">2 项</text>
+<rect x="630.0" y="154.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#27AE60" stroke-width="1.5"/>
+<circle cx="650.0" cy="176.0" r="11" fill="#27AE60"/>
+<text x="650.0" y="181.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">9</text>
+<text x="668.0" y="181.0" font-size="15" fill="#1F2937" font-weight="600">统计范围筛选</text>
+<rect x="630.0" y="212.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#27AE60" stroke-width="1.5"/>
+<circle cx="650.0" cy="234.0" r="11" fill="#27AE60"/>
+<text x="650.0" y="239.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">10</text>
+<text x="668.0" y="239.0" font-size="15" fill="#1F2937" font-weight="600">活跃度日历热力图</text>
+<text x="634.0" y="480.0" font-size="14" fill="#6B7280">热力图补齐没有记录的日期</text>
+<text x="634.0" y="504.0" font-size="14" fill="#6B7280">范围切换保留旧数据淡出</text>
+<rect x="911.0" y="76.0" width="270.0" height="460.0" rx="18" fill="#F3ECFC" stroke="#9B51E0" stroke-width="2"/>
+<text x="931.0" y="116.0" font-size="22" fill="#4C1D95" font-weight="800">搜索</text>
+<text x="1161.0" y="116.0" font-size="15" fill="#4C1D95" text-anchor="end">2 项</text>
+<rect x="927.0" y="154.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#9B51E0" stroke-width="1.5"/>
+<circle cx="947.0" cy="176.0" r="11" fill="#9B51E0"/>
+<text x="947.0" y="181.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">11</text>
+<text x="965.0" y="181.0" font-size="15" fill="#1F2937" font-weight="600">全文搜索会话内容</text>
+<rect x="927.0" y="212.0" width="238.0" height="44.0" rx="12" fill="#FFFFFF" stroke="#9B51E0" stroke-width="1.5"/>
+<circle cx="947.0" cy="234.0" r="11" fill="#9B51E0"/>
+<text x="947.0" y="239.0" font-size="13" fill="#FFFFFF" font-weight="800" text-anchor="middle">12</text>
+<text x="965.0" y="239.0" font-size="15" fill="#1F2937" font-weight="600">命中直达消息并高亮</text>
+<text x="931.0" y="480.0" font-size="14" fill="#6B7280">不建索引，按需流式扫描</text>
+<text x="931.0" y="504.0" font-size="14" fill="#6B7280">命中区间用于前端高亮</text>
+</svg>

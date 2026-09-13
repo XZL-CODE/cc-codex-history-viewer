@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="470" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">索引构建流水线：流式、并行、增量、异步</text>
+<rect x="40.0" y="96.0" width="190.0" height="40.0" rx="20" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="135.0" y="122.0" font-size="15" fill="#9A3412" font-weight="700" text-anchor="middle">启动时自动构建</text>
+<line x1="230.0" y1="116.0" x2="252.0" y2="116.0" stroke="#FF6A00" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="40.0" y="152.0" width="190.0" height="40.0" rx="20" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="135.0" y="178.0" font-size="15" fill="#9A3412" font-weight="700" text-anchor="middle">顶栏刷新（增量）</text>
+<line x1="230.0" y1="172.0" x2="252.0" y2="172.0" stroke="#FF6A00" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="40.0" y="208.0" width="190.0" height="40.0" rx="20" fill="#FFF1E3" stroke="#FF6A00" stroke-width="2"/>
+<text x="135.0" y="234.0" font-size="15" fill="#9A3412" font-weight="700" text-anchor="middle">设置 → 全量重建</text>
+<line x1="230.0" y1="228.0" x2="252.0" y2="228.0" stroke="#FF6A00" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="252.0" y1="116.0" x2="252.0" y2="228.0" stroke="#FF6A00" stroke-width="2.5" stroke-linecap="round"/>
+<polyline points="252.0,172.0 268.0,172.0" fill="none" stroke="#FF6A00" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFF6A00)"/>
+<rect x="270.0" y="92.0" width="160.0" height="160.0" rx="16" fill="#FFF1E3"/>
+<path d="M286.0,92.0 H414.0 A16,16 0 0 1 430.0,108.0 V102.0 H270.0 V108.0 A16,16 0 0 1 286.0,92.0 Z" fill="#FF6A00"/>
+<rect x="270.0" y="92.0" width="160.0" height="160.0" rx="16" fill="none" stroke="#FF6A00" stroke-width="2.5"/>
+<text x="350.0" y="134.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">扫描目录</text>
+<text x="350.0" y="162.0" font-size="15" fill="#4B5563" text-anchor="middle">列出 history 与</text>
+<text x="350.0" y="186.0" font-size="15" fill="#4B5563" text-anchor="middle">会话文件</text>
+<text x="350.0" y="210.0" font-size="15" fill="#4B5563" text-anchor="middle">两个产品并行</text>
+<polyline points="430.0,172.0 448.0,172.0" fill="none" stroke="#FF6A00" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFF6A00)"/>
+<rect x="450.0" y="92.0" width="160.0" height="160.0" rx="16" fill="#FFF1E3"/>
+<path d="M466.0,92.0 H594.0 A16,16 0 0 1 610.0,108.0 V102.0 H450.0 V108.0 A16,16 0 0 1 466.0,92.0 Z" fill="#FFB020"/>
+<rect x="450.0" y="92.0" width="160.0" height="160.0" rx="16" fill="none" stroke="#FFB020" stroke-width="2.5"/>
+<text x="530.0" y="134.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">比对指纹</text>
+<text x="530.0" y="162.0" font-size="15" fill="#4B5563" text-anchor="middle">mtime + 长度</text>
+<text x="530.0" y="186.0" font-size="15" fill="#4B5563" text-anchor="middle">未变 → 复用缓存</text>
+<text x="530.0" y="210.0" font-size="15" fill="#4B5563" text-anchor="middle">变化 → 待解析</text>
+<polyline points="610.0,172.0 628.0,172.0" fill="none" stroke="#FFB020" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFFB020)"/>
+<rect x="630.0" y="92.0" width="160.0" height="160.0" rx="16" fill="#EAF3FF"/>
+<path d="M646.0,92.0 H774.0 A16,16 0 0 1 790.0,108.0 V102.0 H630.0 V108.0 A16,16 0 0 1 646.0,92.0 Z" fill="#2F80ED"/>
+<rect x="630.0" y="92.0" width="160.0" height="160.0" rx="16" fill="none" stroke="#2F80ED" stroke-width="2.5"/>
+<text x="710.0" y="134.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">并行解析</text>
+<text x="710.0" y="162.0" font-size="15" fill="#4B5563" text-anchor="middle">Rayon 按文件并行</text>
+<text x="710.0" y="186.0" font-size="15" fill="#4B5563" text-anchor="middle">逐行流式读取</text>
+<text x="710.0" y="210.0" font-size="15" fill="#4B5563" text-anchor="middle">文件内保持顺序</text>
+<polyline points="790.0,172.0 808.0,172.0" fill="none" stroke="#2F80ED" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr2F80ED)"/>
+<rect x="810.0" y="92.0" width="160.0" height="160.0" rx="16" fill="#E9F9EF"/>
+<path d="M826.0,92.0 H954.0 A16,16 0 0 1 970.0,108.0 V102.0 H810.0 V108.0 A16,16 0 0 1 826.0,92.0 Z" fill="#27AE60"/>
+<rect x="810.0" y="92.0" width="160.0" height="160.0" rx="16" fill="none" stroke="#27AE60" stroke-width="2.5"/>
+<text x="890.0" y="134.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">汇总索引</text>
+<text x="890.0" y="162.0" font-size="15" fill="#4B5563" text-anchor="middle">合并 · 去重 · 归属</text>
+<text x="890.0" y="186.0" font-size="15" fill="#4B5563" text-anchor="middle">项目与统计</text>
+<text x="890.0" y="210.0" font-size="15" fill="#4B5563" text-anchor="middle">会话用量归属</text>
+<polyline points="970.0,172.0 988.0,172.0" fill="none" stroke="#27AE60" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr27AE60)"/>
+<rect x="990.0" y="92.0" width="160.0" height="160.0" rx="16" fill="#F3ECFC"/>
+<path d="M1006.0,92.0 H1134.0 A16,16 0 0 1 1150.0,108.0 V102.0 H990.0 V108.0 A16,16 0 0 1 1006.0,92.0 Z" fill="#9B51E0"/>
+<rect x="990.0" y="92.0" width="160.0" height="160.0" rx="16" fill="none" stroke="#9B51E0" stroke-width="2.5"/>
+<text x="1070.0" y="134.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">写缓存 v5</text>
+<text x="1070.0" y="162.0" font-size="15" fill="#4B5563" text-anchor="middle">应用数据目录</text>
+<text x="1070.0" y="186.0" font-size="15" fill="#4B5563" text-anchor="middle">BufWriter 直写</text>
+<text x="1070.0" y="210.0" font-size="15" fill="#4B5563" text-anchor="middle">原子替换内存索引</text>
+<text x="270.0" y="296.0" font-size="15" fill="#4B5563">前端进度条 ← index-progress 事件：scanning → parsing 47 / 128 → assembling → done（80 ms 节流）</text>
+<rect x="270.0" y="308.0" width="880.0" height="22.0" rx="11" fill="#F3F4F6"/>
+<rect x="270.0" y="308.0" width="325.0" height="22.0" rx="11" fill="#FF6A00"/>
+<text x="280.0" y="324.0" font-size="13" fill="#FFFFFF" font-weight="700">37%</text>
+<circle cx="278.0" cy="367.0" r="5" fill="#FF6A00"/>
+<text x="294.0" y="372.0" font-size="15" fill="#4B5563">构建在 spawn_blocking 线程池里，不占主线程；并发的读取请求共享同一次构建</text>
+<circle cx="278.0" cy="401.0" r="5" fill="#FF6A00"/>
+<text x="294.0" y="406.0" font-size="15" fill="#4B5563">重建期间旧索引继续服务：RwLock&lt;Option&lt;Arc&lt;AppIndex&gt;&gt;&gt; 在完成时原子替换</text>
+<circle cx="278.0" cy="435.0" r="5" fill="#FF6A00"/>
+<text x="294.0" y="440.0" font-size="15" fill="#4B5563">缓存写在应用自己的数据目录，可随时重建；不在 ~/.claude、~/.codex 下写任何文件</text>
+</svg>

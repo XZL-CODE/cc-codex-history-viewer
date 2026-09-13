@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="420" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">「最近 14 天」柱状图为什么会误导</text>
+<rect x="30.0" y="70.0" width="560.0" height="330.0" rx="18" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+<text x="50.0" y="104.0" font-size="18" fill="#991B1B" font-weight="800">0.6.x：其实是最近 14 个有记录的日子</text>
+<rect x="60.0" y="204.0" width="28.0" height="96.0" rx="4" fill="#FF9A45"/>
+<text x="74.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/1</text>
+<rect x="96.0" y="236.0" width="28.0" height="64.0" rx="4" fill="#FF9A45"/>
+<text x="110.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/2</text>
+<rect x="132.0" y="156.0" width="28.0" height="144.0" rx="4" fill="#FF9A45"/>
+<text x="146.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/4</text>
+<rect x="168.0" y="252.0" width="28.0" height="48.0" rx="4" fill="#FF9A45"/>
+<text x="182.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/5</text>
+<rect x="204.0" y="188.0" width="28.0" height="112.0" rx="4" fill="#FF9A45"/>
+<text x="218.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/9</text>
+<rect x="240.0" y="220.0" width="28.0" height="80.0" rx="4" fill="#FF9A45"/>
+<text x="254.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/10</text>
+<rect x="276.0" y="172.0" width="28.0" height="128.0" rx="4" fill="#FF9A45"/>
+<text x="290.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/11</text>
+<rect x="312.0" y="228.0" width="28.0" height="72.0" rx="4" fill="#FF9A45"/>
+<text x="326.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/15</text>
+<rect x="348.0" y="196.0" width="28.0" height="104.0" rx="4" fill="#FF9A45"/>
+<text x="362.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/16</text>
+<rect x="384.0" y="244.0" width="28.0" height="56.0" rx="4" fill="#FF9A45"/>
+<text x="398.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/18</text>
+<rect x="420.0" y="212.0" width="28.0" height="88.0" rx="4" fill="#FF9A45"/>
+<text x="434.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/19</text>
+<rect x="456.0" y="180.0" width="28.0" height="120.0" rx="4" fill="#FF9A45"/>
+<text x="470.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/22</text>
+<rect x="492.0" y="236.0" width="28.0" height="64.0" rx="4" fill="#FF9A45"/>
+<text x="506.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/23</text>
+<rect x="528.0" y="204.0" width="28.0" height="96.0" rx="4" fill="#FF9A45"/>
+<text x="542.0" y="320.0" font-size="12" fill="#6B7280" text-anchor="middle">9/25</text>
+<line x1="56.0" y1="300.0" x2="566.0" y2="300.0" stroke="#E5E7EB" stroke-width="2" stroke-linecap="round"/>
+<text x="50.0" y="352.0" font-size="15" fill="#4B5563">柱子挨在一起，看起来天天都在用；其实 9/1 到 9/25 里有 11 天没有记录</text>
+<rect x="620.0" y="70.0" width="550.0" height="330.0" rx="18" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+<text x="640.0" y="104.0" font-size="18" fill="#14532D" font-weight="800">0.7.0：日历热力图，补齐没有记录的日期</text>
+<rect x="700.0" y="136.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="700.0" y="165.0" width="24.0" height="24.0" rx="5" fill="#FF9A45"/>
+<rect x="700.0" y="194.0" width="24.0" height="24.0" rx="5" fill="#FFC48A"/>
+<rect x="700.0" y="223.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="700.0" y="252.0" width="24.0" height="24.0" rx="5" fill="#FF6A00"/>
+<rect x="700.0" y="281.0" width="24.0" height="24.0" rx="5" fill="#FFE8D1"/>
+<rect x="700.0" y="310.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="729.0" y="136.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="729.0" y="165.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="729.0" y="194.0" width="24.0" height="24.0" rx="5" fill="#FF9A45"/>
+<rect x="729.0" y="223.0" width="24.0" height="24.0" rx="5" fill="#FFC48A"/>
+<rect x="729.0" y="252.0" width="24.0" height="24.0" rx="5" fill="#FF6A00"/>
+<rect x="729.0" y="281.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="729.0" y="310.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="758.0" y="136.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="758.0" y="165.0" width="24.0" height="24.0" rx="5" fill="#FFC48A"/>
+<rect x="758.0" y="194.0" width="24.0" height="24.0" rx="5" fill="#FF9A45"/>
+<rect x="758.0" y="223.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="758.0" y="252.0" width="24.0" height="24.0" rx="5" fill="#FFE8D1"/>
+<rect x="758.0" y="281.0" width="24.0" height="24.0" rx="5" fill="#FF9A45"/>
+<rect x="758.0" y="310.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="787.0" y="136.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="787.0" y="165.0" width="24.0" height="24.0" rx="5" fill="#FF6A00"/>
+<rect x="787.0" y="194.0" width="24.0" height="24.0" rx="5" fill="#FFC48A"/>
+<rect x="787.0" y="223.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="787.0" y="252.0" width="24.0" height="24.0" rx="5" fill="#FF9A45"/>
+<rect x="787.0" y="281.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="787.0" y="310.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="816.0" y="136.0" width="24.0" height="24.0" rx="5" fill="#EEF0F3"/>
+<rect x="816.0" y="165.0" width="24.0" height="24.0" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="816.0" y="194.0" width="24.0" height="24.0" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="816.0" y="223.0" width="24.0" height="24.0" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="816.0" y="252.0" width="24.0" height="24.0" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="816.0" y="281.0" width="24.0" height="24.0" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="816.0" y="310.0" width="24.0" height="24.0" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="692.0" y="153.0" font-size="12" fill="#6B7280" text-anchor="end">周一</text>
+<text x="692.0" y="211.0" font-size="12" fill="#6B7280" text-anchor="end">周三</text>
+<text x="692.0" y="269.0" font-size="12" fill="#6B7280" text-anchor="end">周五</text>
+<text x="692.0" y="327.0" font-size="12" fill="#6B7280" text-anchor="end">周日</text>
+<text x="714.5" y="126.0" font-size="12" fill="#6B7280" text-anchor="middle">9 月</text>
+<text x="880.0" y="152.0" font-size="13" fill="#6B7280">少</text>
+<rect x="902.0" y="140.0" width="16.0" height="16.0" rx="4" fill="#EEF0F3"/>
+<rect x="922.0" y="140.0" width="16.0" height="16.0" rx="4" fill="#FFE8D1"/>
+<rect x="942.0" y="140.0" width="16.0" height="16.0" rx="4" fill="#FFC48A"/>
+<rect x="962.0" y="140.0" width="16.0" height="16.0" rx="4" fill="#FF9A45"/>
+<rect x="982.0" y="140.0" width="16.0" height="16.0" rx="4" fill="#FF6A00"/>
+<text x="1006.0" y="152.0" font-size="13" fill="#6B7280">多</text>
+<text x="880.0" y="200.0" font-size="15" fill="#4B5563">空白格子一眼可见</text>
+<text x="880.0" y="232.0" font-size="15" fill="#4B5563">悬停显示日期与条数</text>
+<text x="880.0" y="264.0" font-size="15" fill="#4B5563">深浅色主题各自配色</text>
+<text x="880.0" y="312.0" font-size="16" fill="#14532D" font-weight="800">14 个活跃日 · 11 天空白</text>
+<text x="640.0" y="372.0" font-size="15" fill="#4B5563">汇总行：N 个活跃日 · 共 M 条 · 单日最高 K 条</text>
+</svg>

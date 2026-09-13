@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="560" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">全文搜索：不建索引，每次按需并行流式扫描</text>
+<rect x="30.0" y="84.0" width="175.0" height="150.0" rx="16" fill="#FFF1E3"/>
+<path d="M46.0,84.0 H189.0 A16,16 0 0 1 205.0,100.0 V94.0 H30.0 V100.0 A16,16 0 0 1 46.0,84.0 Z" fill="#FF6A00"/>
+<rect x="30.0" y="84.0" width="175.0" height="150.0" rx="16" fill="none" stroke="#FF6A00" stroke-width="2.5"/>
+<text x="117.5" y="126.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">确定范围</text>
+<text x="117.5" y="154.0" font-size="15" fill="#4B5563" text-anchor="middle">当前 Agent 筛选</text>
+<text x="117.5" y="178.0" font-size="15" fill="#4B5563" text-anchor="middle">当前文件夹筛选</text>
+<text x="117.5" y="202.0" font-size="15" fill="#4B5563" text-anchor="middle">列出会话文件</text>
+<polyline points="205.0,159.0 223.0,159.0" fill="none" stroke="#FF6A00" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFF6A00)"/>
+<rect x="225.0" y="84.0" width="175.0" height="150.0" rx="16" fill="#FFF1E3"/>
+<path d="M241.0,84.0 H384.0 A16,16 0 0 1 400.0,100.0 V94.0 H225.0 V100.0 A16,16 0 0 1 241.0,84.0 Z" fill="#FFB020"/>
+<rect x="225.0" y="84.0" width="175.0" height="150.0" rx="16" fill="none" stroke="#FFB020" stroke-width="2.5"/>
+<text x="312.5" y="126.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">并行逐行读</text>
+<text x="312.5" y="154.0" font-size="15" fill="#4B5563" text-anchor="middle">Rayon 按文件并行</text>
+<text x="312.5" y="178.0" font-size="15" fill="#4B5563" text-anchor="middle">BufReader 逐行</text>
+<text x="312.5" y="202.0" font-size="15" fill="#4B5563" text-anchor="middle">不整文件读入内存</text>
+<polyline points="400.0,159.0 418.0,159.0" fill="none" stroke="#FFB020" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFFB020)"/>
+<rect x="420.0" y="84.0" width="175.0" height="150.0" rx="16" fill="#EAF3FF"/>
+<path d="M436.0,84.0 H579.0 A16,16 0 0 1 595.0,100.0 V94.0 H420.0 V100.0 A16,16 0 0 1 436.0,84.0 Z" fill="#2F80ED"/>
+<rect x="420.0" y="84.0" width="175.0" height="150.0" rx="16" fill="none" stroke="#2F80ED" stroke-width="2.5"/>
+<text x="507.5" y="126.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">字节预筛</text>
+<text x="507.5" y="154.0" font-size="15" fill="#4B5563" text-anchor="middle">大小写不敏感子串</text>
+<text x="507.5" y="178.0" font-size="15" fill="#4B5563" text-anchor="middle">不命中直接丢弃</text>
+<text x="507.5" y="202.0" font-size="15" fill="#4B5563" text-anchor="middle">这一步不解析 JSON</text>
+<polyline points="595.0,159.0 613.0,159.0" fill="none" stroke="#2F80ED" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr2F80ED)"/>
+<rect x="615.0" y="84.0" width="175.0" height="150.0" rx="16" fill="#EAF3FF"/>
+<path d="M631.0,84.0 H774.0 A16,16 0 0 1 790.0,100.0 V94.0 H615.0 V100.0 A16,16 0 0 1 631.0,84.0 Z" fill="#56CCF2"/>
+<rect x="615.0" y="84.0" width="175.0" height="150.0" rx="16" fill="none" stroke="#56CCF2" stroke-width="2.5"/>
+<text x="702.5" y="126.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">只解析命中行</text>
+<text x="702.5" y="154.0" font-size="15" fill="#4B5563" text-anchor="middle">serde_json</text>
+<text x="702.5" y="178.0" font-size="15" fill="#4B5563" text-anchor="middle">提取候选文本</text>
+<text x="702.5" y="202.0" font-size="15" fill="#4B5563" text-anchor="middle">排除工具结果</text>
+<polyline points="790.0,159.0 808.0,159.0" fill="none" stroke="#56CCF2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr56CCF2)"/>
+<rect x="810.0" y="84.0" width="175.0" height="150.0" rx="16" fill="#E9F9EF"/>
+<path d="M826.0,84.0 H969.0 A16,16 0 0 1 985.0,100.0 V94.0 H810.0 V100.0 A16,16 0 0 1 826.0,84.0 Z" fill="#27AE60"/>
+<rect x="810.0" y="84.0" width="175.0" height="150.0" rx="16" fill="none" stroke="#27AE60" stroke-width="2.5"/>
+<text x="897.5" y="126.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">匹配与片段</text>
+<text x="897.5" y="154.0" font-size="15" fill="#4B5563" text-anchor="middle">多词同时出现</text>
+<text x="897.5" y="178.0" font-size="15" fill="#4B5563" text-anchor="middle">前 60 / 后 160 字</text>
+<text x="897.5" y="202.0" font-size="15" fill="#4B5563" text-anchor="middle">记录命中区间</text>
+<polyline points="985.0,159.0 1003.0,159.0" fill="none" stroke="#27AE60" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr27AE60)"/>
+<rect x="1005.0" y="84.0" width="175.0" height="150.0" rx="16" fill="#F3ECFC"/>
+<path d="M1021.0,84.0 H1164.0 A16,16 0 0 1 1180.0,100.0 V94.0 H1005.0 V100.0 A16,16 0 0 1 1021.0,84.0 Z" fill="#9B51E0"/>
+<rect x="1005.0" y="84.0" width="175.0" height="150.0" rx="16" fill="none" stroke="#9B51E0" stroke-width="2.5"/>
+<text x="1092.5" y="126.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">按会话分组</text>
+<text x="1092.5" y="154.0" font-size="15" fill="#4B5563" text-anchor="middle">每会话 ≤ 20 条</text>
+<text x="1092.5" y="178.0" font-size="15" fill="#4B5563" text-anchor="middle">总计 ≤ 300 条</text>
+<text x="1092.5" y="202.0" font-size="15" fill="#4B5563" text-anchor="middle">附文件数与耗时</text>
+<rect x="35.0" y="290.0" width="520.0" height="46.0" rx="12" fill="#FFF1E3"/>
+<text x="295.0" y="319.0" font-size="15" fill="#9A3412" font-weight="700" text-anchor="middle">全部原始行（大多数在这一步被丢弃）</text>
+<rect x="130.0" y="352.0" width="330.0" height="46.0" rx="12" fill="#FFC48A"/>
+<text x="295.0" y="381.0" font-size="15" fill="#9A3412" font-weight="700" text-anchor="middle">字节预筛命中的行，才解析 JSON</text>
+<rect x="195.0" y="414.0" width="200.0" height="46.0" rx="12" fill="#FF6A00"/>
+<text x="295.0" y="443.0" font-size="15" fill="#FFFFFF" font-weight="700" text-anchor="middle">真正匹配的消息</text>
+<text x="295.0" y="490.0" font-size="15" fill="#4B5563" text-anchor="middle">先便宜后昂贵：字节比较快过 JSON 解析几个数量级</text>
+<rect x="600.0" y="270.0" width="570.0" height="260.0" rx="16" fill="#FFFBF5" stroke="#FFB020" stroke-width="1.5"/>
+<text x="624.0" y="306.0" font-size="18" fill="#1F2937" font-weight="800">扫什么，不扫什么</text>
+<text x="624.0" y="340.0" font-size="15" fill="#14532D" font-weight="700">覆盖</text>
+<text x="628.0" y="368.0" font-size="15" fill="#27AE60" font-weight="800">✓</text>
+<text x="650.0" y="368.0" font-size="15" fill="#4B5563">用户消息 · 助手回复 · 思考摘要</text>
+<text x="628.0" y="396.0" font-size="15" fill="#27AE60" font-weight="800">✓</text>
+<text x="650.0" y="396.0" font-size="15" fill="#4B5563">工具调用参数（Edit 的 old / new、Bash 的命令）</text>
+<text x="628.0" y="424.0" font-size="15" fill="#27AE60" font-weight="800">✓</text>
+<text x="650.0" y="424.0" font-size="15" fill="#4B5563">多个关键词必须同时出现在同一条消息里</text>
+<text x="624.0" y="466.0" font-size="15" fill="#991B1B" font-weight="700">不覆盖</text>
+<text x="628.0" y="494.0" font-size="15" fill="#EB5757" font-weight="800">×</text>
+<text x="650.0" y="494.0" font-size="15" fill="#4B5563">工具结果正文（文件内容、命令输出）</text>
+<text x="628.0" y="522.0" font-size="15" fill="#EB5757" font-weight="800">×</text>
+<text x="650.0" y="522.0" font-size="15" fill="#4B5563">developer / system 与 AGENTS.md 等注入内容</text>
+</svg>

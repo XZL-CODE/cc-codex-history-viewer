@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="660" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">整体架构与读写边界</text>
+<rect x="30.0" y="80.0" width="170.0" height="74.0" rx="16" fill="#FFF1E3"/>
+<path d="M46.0,80.0 H184.0 A16,16 0 0 1 200.0,96.0 V90.0 H30.0 V96.0 A16,16 0 0 1 46.0,80.0 Z" fill="#FF6A00"/>
+<rect x="30.0" y="80.0" width="170.0" height="74.0" rx="16" fill="none" stroke="#FF6A00" stroke-width="2.5"/>
+<text x="115.0" y="122.0" font-size="16" fill="#1F2937" font-weight="700" text-anchor="middle">Claude Code 文件</text>
+<text x="115.0" y="150.0" font-size="14" fill="#4B5563" text-anchor="middle">~/.claude</text>
+<rect x="30.0" y="168.0" width="170.0" height="74.0" rx="16" fill="#EAF3FF"/>
+<path d="M46.0,168.0 H184.0 A16,16 0 0 1 200.0,184.0 V178.0 H30.0 V184.0 A16,16 0 0 1 46.0,168.0 Z" fill="#2F80ED"/>
+<rect x="30.0" y="168.0" width="170.0" height="74.0" rx="16" fill="none" stroke="#2F80ED" stroke-width="2.5"/>
+<text x="115.0" y="210.0" font-size="16" fill="#1F2937" font-weight="700" text-anchor="middle">Codex 文件</text>
+<text x="115.0" y="238.0" font-size="14" fill="#4B5563" text-anchor="middle">~/.codex</text>
+<rect x="240.0" y="80.0" width="170.0" height="74.0" rx="16" fill="#FFFFFF"/>
+<path d="M256.0,80.0 H394.0 A16,16 0 0 1 410.0,96.0 V90.0 H240.0 V96.0 A16,16 0 0 1 256.0,80.0 Z" fill="#FF6A00"/>
+<rect x="240.0" y="80.0" width="170.0" height="74.0" rx="16" fill="none" stroke="#FF6A00" stroke-width="2.5"/>
+<text x="325.0" y="122.0" font-size="16" fill="#1F2937" font-weight="700" text-anchor="middle">Claude adapter</text>
+<text x="325.0" y="150.0" font-size="14" fill="#4B5563" text-anchor="middle">parser.rs</text>
+<rect x="240.0" y="168.0" width="170.0" height="74.0" rx="16" fill="#FFFFFF"/>
+<path d="M256.0,168.0 H394.0 A16,16 0 0 1 410.0,184.0 V178.0 H240.0 V184.0 A16,16 0 0 1 256.0,168.0 Z" fill="#2F80ED"/>
+<rect x="240.0" y="168.0" width="170.0" height="74.0" rx="16" fill="none" stroke="#2F80ED" stroke-width="2.5"/>
+<text x="325.0" y="210.0" font-size="16" fill="#1F2937" font-weight="700" text-anchor="middle">Codex adapter</text>
+<text x="325.0" y="238.0" font-size="14" fill="#4B5563" text-anchor="middle">codex_parser.rs</text>
+<rect x="450.0" y="80.0" width="170.0" height="162.0" rx="16" fill="#E9F9EF"/>
+<path d="M466.0,80.0 H604.0 A16,16 0 0 1 620.0,96.0 V90.0 H450.0 V96.0 A16,16 0 0 1 466.0,80.0 Z" fill="#27AE60"/>
+<rect x="450.0" y="80.0" width="170.0" height="162.0" rx="16" fill="none" stroke="#27AE60" stroke-width="2.5"/>
+<text x="535.0" y="122.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">统一中间记录</text>
+<text x="535.0" y="150.0" font-size="14" fill="#4B5563" text-anchor="middle">Prompt · Session</text>
+<text x="535.0" y="173.0" font-size="14" fill="#4B5563" text-anchor="middle">Message · UsageEvent</text>
+<text x="535.0" y="196.0" font-size="14" fill="#4B5563" text-anchor="middle">不看原始 JSON 字段</text>
+<rect x="660.0" y="80.0" width="170.0" height="162.0" rx="16" fill="#E9F9EF"/>
+<path d="M676.0,80.0 H814.0 A16,16 0 0 1 830.0,96.0 V90.0 H660.0 V96.0 A16,16 0 0 1 676.0,80.0 Z" fill="#27AE60"/>
+<rect x="660.0" y="80.0" width="170.0" height="162.0" rx="16" fill="none" stroke="#27AE60" stroke-width="2.5"/>
+<text x="745.0" y="122.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">索引与缓存 v5</text>
+<text x="745.0" y="150.0" font-size="14" fill="#4B5563" text-anchor="middle">indexer.rs</text>
+<text x="745.0" y="173.0" font-size="14" fill="#4B5563" text-anchor="middle">Rayon 并行 · 增量指纹</text>
+<text x="745.0" y="196.0" font-size="14" fill="#4B5563" text-anchor="middle">后台线程构建</text>
+<rect x="870.0" y="80.0" width="160.0" height="162.0" rx="16" fill="#F3ECFC"/>
+<path d="M886.0,80.0 H1014.0 A16,16 0 0 1 1030.0,96.0 V90.0 H870.0 V96.0 A16,16 0 0 1 886.0,80.0 Z" fill="#9B51E0"/>
+<rect x="870.0" y="80.0" width="160.0" height="162.0" rx="16" fill="none" stroke="#9B51E0" stroke-width="2.5"/>
+<text x="950.0" y="122.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">Tauri commands</text>
+<text x="950.0" y="150.0" font-size="14" fill="#4B5563" text-anchor="middle">async 命令</text>
+<text x="950.0" y="173.0" font-size="14" fill="#4B5563" text-anchor="middle">spawn_blocking</text>
+<text x="950.0" y="196.0" font-size="14" fill="#4B5563" text-anchor="middle">index-progress 事件</text>
+<rect x="1060.0" y="80.0" width="110.0" height="162.0" rx="16" fill="#F3ECFC"/>
+<path d="M1076.0,80.0 H1154.0 A16,16 0 0 1 1170.0,96.0 V90.0 H1060.0 V96.0 A16,16 0 0 1 1076.0,80.0 Z" fill="#9B51E0"/>
+<rect x="1060.0" y="80.0" width="110.0" height="162.0" rx="16" fill="none" stroke="#9B51E0" stroke-width="2.5"/>
+<text x="1115.0" y="122.0" font-size="17" fill="#1F2937" font-weight="700" text-anchor="middle">React 界面</text>
+<text x="1115.0" y="150.0" font-size="14" fill="#4B5563" text-anchor="middle">TanStack</text>
+<text x="1115.0" y="173.0" font-size="14" fill="#4B5563" text-anchor="middle">Query</text>
+<text x="1115.0" y="196.0" font-size="14" fill="#4B5563" text-anchor="middle">HashRouter</text>
+<polyline points="200.0,117.0 238.0,117.0" fill="none" stroke="#FF6A00" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFF6A00)"/>
+<polyline points="200.0,205.0 238.0,205.0" fill="none" stroke="#2F80ED" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr2F80ED)"/>
+<polyline points="410.0,117.0 448.0,140.0" fill="none" stroke="#FF6A00" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrFF6A00)"/>
+<polyline points="410.0,205.0 448.0,182.0" fill="none" stroke="#2F80ED" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr2F80ED)"/>
+<polyline points="620.0,161.0 658.0,161.0" fill="none" stroke="#27AE60" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr27AE60)"/>
+<polyline points="830.0,161.0 868.0,161.0" fill="none" stroke="#27AE60" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr27AE60)"/>
+<polyline points="1030.0,161.0 1058.0,161.0" fill="none" stroke="#9B51E0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arr9B51E0)"/>
+<rect x="240.0" y="286.0" width="420.0" height="56.0" rx="14" fill="#FFFFFF" stroke="#9B51E0" stroke-width="2" stroke-dasharray="8 6"/>
+<text x="450.0" y="311.0" font-size="16" fill="#4C1D95" font-weight="700" text-anchor="middle">全文搜索 content_search.rs</text>
+<text x="450.0" y="332.0" font-size="14" fill="#4B5563" text-anchor="middle">按需并行流式扫描会话文件，不落索引</text>
+<polyline points="115.0,242.0 115.0,314.0 238.0,314.0" fill="none" stroke="#9B51E0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 5" marker-end="url(#arr9B51E0)"/>
+<polyline points="660.0,314.0 950.0,314.0 950.0,246.0" fill="none" stroke="#9B51E0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 5" marker-end="url(#arr9B51E0)"/>
+<rect x="30.0" y="392.0" width="560.0" height="232.0" rx="18" fill="#E9F9EF" stroke="#27AE60" stroke-width="2"/>
+<text x="54.0" y="434.0" font-size="20" fill="#14532D" font-weight="800">只读取输入，只写自己的目录</text>
+<circle cx="62.0" cy="475.0" r="5" fill="#27AE60"/>
+<text x="78.0" y="480.0" font-size="16" fill="#4B5563">读：Claude Code 的 history.jsonl、projects、sessions</text>
+<circle cx="62.0" cy="519.0" r="5" fill="#27AE60"/>
+<text x="78.0" y="524.0" font-size="16" fill="#4B5563">读：Codex 的 history、sessions、archived_sessions</text>
+<circle cx="62.0" cy="563.0" r="5" fill="#27AE60"/>
+<text x="78.0" y="568.0" font-size="16" fill="#4B5563">写：settings.json、索引缓存 v5、窗口位置、导出的 Markdown</text>
+<rect x="610.0" y="392.0" width="560.0" height="232.0" rx="18" fill="#FDECEC" stroke="#EB5757" stroke-width="2"/>
+<text x="634.0" y="434.0" font-size="20" fill="#991B1B" font-weight="800">绝不做的事</text>
+<circle cx="642.0" cy="475.0" r="5" fill="#EB5757"/>
+<text x="658.0" y="480.0" font-size="16" fill="#4B5563">不读 Codex auth.json，不把私有 SQLite 表当主数据源</text>
+<circle cx="642.0" cy="519.0" r="5" fill="#EB5757"/>
+<text x="658.0" y="524.0" font-size="16" fill="#4B5563">不在 ~/.claude、~/.codex 下写入或删除任何文件</text>
+<circle cx="642.0" cy="563.0" r="5" fill="#EB5757"/>
+<text x="658.0" y="568.0" font-size="16" fill="#4B5563">不联网、不上传、不遥测；链接只在点击时交给系统浏览器</text>
+</svg>

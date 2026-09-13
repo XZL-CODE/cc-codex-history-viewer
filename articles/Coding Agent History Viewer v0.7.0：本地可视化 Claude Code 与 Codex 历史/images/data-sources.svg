@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','WenQuanYi Zen Hei','Segoe UI',Helvetica,Arial,sans-serif">
+<defs><marker id="arrFF6A00" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF6A00"/></marker><marker id="arr2F80ED" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F80ED"/></marker><marker id="arr27AE60" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#27AE60"/></marker><marker id="arr9B51E0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9B51E0"/></marker><marker id="arrEB5757" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EB5757"/></marker><marker id="arr6B7280" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker><marker id="arr4B5563" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker></defs>
+<rect width="1200" height="640" fill="#FFFFFF"/>
+<text x="600.0" y="44.0" font-size="24" fill="#1F2937" font-weight="800" text-anchor="middle">两个 Coding Agent 把历史留在了哪里</text>
+<rect x="30.0" y="72.0" width="560.0" height="548.0" rx="18" fill="#FFF1E3" stroke="#FFB020" stroke-width="2"/>
+<text x="54.0" y="114.0" font-size="20" fill="#1F2937" font-weight="800">Claude Code · ~/.claude</text>
+<text x="54.0" y="164.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">~/.claude/</text>
+<text x="78.0" y="188.0" font-size="15" fill="#4B5563">数据根目录，设置里可以改</text>
+<text x="54.0" y="242.0" font-size="17" fill="#1E3A8A" font-weight="700">├─ history.jsonl</text>
+<text x="78.0" y="266.0" font-size="15" fill="#4B5563">输入框历史：display、timestamp、project、sessionId</text>
+<text x="54.0" y="320.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">├─ projects/-Users-xzl-dev-app/</text>
+<text x="78.0" y="344.0" font-size="15" fill="#4B5563">工作目录编码成目录名，一个目录一个项目</text>
+<text x="54.0" y="398.0" font-size="17" fill="#1E3A8A" font-weight="700">│   ├─ &lt;sessionId&gt;.jsonl</text>
+<text x="78.0" y="422.0" font-size="15" fill="#4B5563">完整会话：消息、thinking、tool_use / tool_result、usage</text>
+<text x="54.0" y="476.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">│   └─ subagents/*.jsonl</text>
+<text x="78.0" y="500.0" font-size="15" fill="#4B5563">Task 派出的子代理，用量并入父会话</text>
+<text x="54.0" y="554.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">└─ sessions/*.json</text>
+<text x="78.0" y="578.0" font-size="15" fill="#4B5563">会话元数据，用来补 CLI 版本</text>
+<rect x="610.0" y="72.0" width="560.0" height="548.0" rx="18" fill="#EAF3FF" stroke="#2F80ED" stroke-width="2"/>
+<text x="634.0" y="114.0" font-size="20" fill="#1F2937" font-weight="800">OpenAI Codex · ~/.codex（或 $CODEX_HOME）</text>
+<text x="634.0" y="164.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">~/.codex/</text>
+<text x="658.0" y="188.0" font-size="15" fill="#4B5563">优先级：codexDataDir &gt; $CODEX_HOME &gt; ~/.codex</text>
+<text x="634.0" y="242.0" font-size="17" fill="#1E3A8A" font-weight="700">├─ history.jsonl</text>
+<text x="658.0" y="266.0" font-size="15" fill="#4B5563">{session_id, text, ts}，ts 可能是秒也可能是毫秒</text>
+<text x="634.0" y="320.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">├─ sessions/2026/09/13/</text>
+<text x="658.0" y="344.0" font-size="15" fill="#4B5563">按日期分目录存放当前会话</text>
+<text x="634.0" y="398.0" font-size="17" fill="#1E3A8A" font-weight="700">│   └─ rollout-*.jsonl</text>
+<text x="658.0" y="422.0" font-size="15" fill="#4B5563">事件流：session_meta、turn_context、</text>
+<text x="658.0" y="442.0" font-size="15" fill="#4B5563">event_msg、response_item</text>
+<text x="634.0" y="476.0" font-size="17" fill="#1F2937" font-family="'SF Mono',Menlo,Consolas,'DejaVu Sans Mono','WenQuanYi Zen Hei Mono',monospace">└─ archived_sessions/*.jsonl</text>
+<text x="658.0" y="500.0" font-size="15" fill="#4B5563">归档会话，文件名不一定以 rollout- 开头</text>
+<text x="634.0" y="554.0" font-size="17" fill="#1E3A8A" font-weight="700">Token 口径</text>
+<text x="658.0" y="578.0" font-size="15" fill="#4B5563">只取每次 token_count.info.last_token_usage，</text>
+<text x="658.0" y="598.0" font-size="15" fill="#4B5563">input_tokens 已包含 cached_input_tokens</text>
+</svg>
