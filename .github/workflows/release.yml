@@ -1,0 +1,74 @@
+# 发布桌面安装包：macOS 通用 dmg（Apple Silicon + Intel）与 Windows exe/msi。
+# 触发方式：推送 v* 标签，或在 Actions 页面手动运行（可指定标签，默认 v<tauri.conf.json 版本>）。
+# 产物由 tauri-action 上传到同名 GitHub Release；应用未签名，说明见 Release 正文。
+name: Release desktop builds
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag，留空则使用 v<版本号>"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            targets: x86_64-pc-windows-msvc
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and upload bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || 'v__VERSION__' }}
+          releaseName: ${{ inputs.tag || 'v__VERSION__' }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false
+          args: ${{ matrix.args }}
+          releaseBody: |
+            Coding Agent History Viewer 桌面安装包 / desktop installers.
+
+            **macOS**：`*.dmg` 为通用二进制（Apple Silicon 与 Intel 均可）。应用未经 Apple 签名与公证，首次打开若提示“已损坏”或“无法验证开发者”，在终端执行：
+            `xattr -cr "/Applications/Coding Agent History Viewer.app"`，或在 Finder 中右键“打开”。
+
+            **Windows**：`*-setup.exe` 为 NSIS 安装包，`*.msi` 为 MSI 安装包。应用未签名，SmartScreen 提示时选择“更多信息 → 仍要运行”。
+
+            The app makes no network requests and reads Claude Code / Codex history locally only.
