@@ -58,6 +58,9 @@ pub struct PromptEntry {
     pub timestamp: i64,
     pub origin: PromptOrigin,
     pub session_id: Option<String>,
+    /// True when the session file behind `session_id` exists in the index.
+    #[serde(default)]
+    pub has_conversation: bool,
     pub git_branch: Option<String>,
     pub is_command: bool,
     pub pasted_count: usize,
@@ -87,6 +90,56 @@ pub struct SearchResult {
     pub match_ranges: Vec<[usize; 2]>,
 }
 
+/// One full-text hit inside a conversation file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationHit {
+    pub agent: Agent,
+    pub session_id: String,
+    pub project: String,
+    pub session_title: String,
+    pub session_started_at: i64,
+    /// Equals `ChatMessage.uuid` in the detail view when that message survived detail merging.
+    pub message_uuid: String,
+    pub timestamp: i64,
+    /// user | assistant
+    pub role: String,
+    /// text | thinking | tool_use
+    pub kind: String,
+    pub tool_name: Option<String>,
+    pub snippet: String,
+    /// Character ranges inside `snippet`, represented as [start, end).
+    pub match_ranges: Vec<[usize; 2]>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSearchResponse {
+    pub hits: Vec<ConversationHit>,
+    pub scanned_files: usize,
+    pub matched_sessions: usize,
+    /// True when a per-session cap or the global limit dropped hits.
+    pub truncated: bool,
+    pub elapsed_ms: u64,
+}
+
+/// Token usage attributed to one session. Copied fork/resume events count once, in the earliest
+/// session that recorded them, so session totals add up to the global totals.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUsage {
+    pub uncached_input: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub output: u64,
+    pub reasoning_output: u64,
+    pub total_tokens_including_cache: u64,
+    /// Known-model API-equivalent cost only.
+    pub est_cost_usd: f64,
+    pub unknown_model_tokens: u64,
+    pub assistant_messages: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
@@ -102,6 +155,8 @@ pub struct SessionSummary {
     /// Codex session_meta.source (or `cli` for Claude data).
     pub source: Option<String>,
     pub models: Vec<String>,
+    #[serde(default)]
+    pub usage: SessionUsage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +172,9 @@ pub struct ConversationDetail {
     pub source: Option<String>,
     pub models: Vec<String>,
     pub messages: Vec<ChatMessage>,
+    /// Filled from the index after parsing; parsers leave it at the default.
+    #[serde(default)]
+    pub usage: SessionUsage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +197,9 @@ pub struct ContentBlock {
     pub text: Option<String>,
     pub tool_name: Option<String>,
     pub tool_input: Option<serde_json::Value>,
+    /// True when `text` was cut at the display limit.
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,6 +266,26 @@ pub struct IndexMeta {
     pub from_cache: bool,
     pub source_files: usize,
     pub reparsed_files: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IndexPhase {
+    Scanning,
+    Parsing,
+    Assembling,
+    Done,
+}
+
+/// Payload of the `index-progress` event emitted while an index builds.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexProgress {
+    pub phase: IndexPhase,
+    /// Files parsed so far in the `parsing` phase.
+    pub done: usize,
+    /// Files that need parsing in this build (0 while scanning).
+    pub total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

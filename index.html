@@ -6,7 +6,12 @@
     <title>Coding Agent History Viewer</title>
     <script>
       try {
-        if (localStorage.getItem("cchv-theme") === "dark") {
+        var savedTheme = localStorage.getItem("cchv-theme");
+        var prefersDark =
+          savedTheme === "dark" ||
+          (savedTheme !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (prefersDark) {
           document.documentElement.classList.add("dark");
         }
       } catch {}

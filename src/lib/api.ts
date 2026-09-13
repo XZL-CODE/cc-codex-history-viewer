@@ -9,6 +9,7 @@ import type {
   AgentFilter,
   ConversationDetail,
   ConversationExportResult,
+  ConversationSearchResponse,
   ExportParams,
   ExportResult,
   IndexMeta,
@@ -62,8 +63,26 @@ export const api = {
       agentFilter,
     }),
 
-  getStats: (agentFilter: AgentFilter) =>
-    invoke<AppStats>("get_stats", { agentFilter }),
+  /** 不传日期返回全量统计；传 YYYY-MM-DD 起止日期时按本地时区闭区间即时计算 */
+  /** 全文搜索会话内容：并行流式扫描会话文件，不落索引 */
+  searchConversations: (
+    query: string,
+    projectFilter: string | null,
+    agentFilter: AgentFilter,
+    limit?: number
+  ) =>
+    invoke<ConversationSearchResponse>("search_conversations", {
+      query,
+      projectFilter,
+      agentFilter,
+      limit,
+    }),
+
+  getStats: (
+    agentFilter: AgentFilter,
+    startDate: string | null = null,
+    endDate: string | null = null
+  ) => invoke<AppStats>("get_stats", { agentFilter, startDate, endDate }),
 
   getProjectSessions: (project: string, agentFilter: AgentFilter) =>
     invoke<SessionSummary[]>("get_project_sessions", { project, agentFilter }),
@@ -73,7 +92,8 @@ export const api = {
 
   getIndexMeta: () => invoke<IndexMeta>("get_index_meta"),
 
-  refreshIndex: () => invoke<IndexMeta>("refresh_index"),
+  /** 刷新索引：默认增量（只重解析变化文件）；full=true 忽略缓存全量重建 */
+  refreshIndex: (full = false) => invoke<IndexMeta>("refresh_index", { full }),
 
   buildExport: (p: ExportParams) =>
     invoke<ExportResult>("build_prompt_export", {

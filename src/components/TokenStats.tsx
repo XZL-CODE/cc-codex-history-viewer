@@ -16,40 +16,23 @@ import {
   DatabaseZap,
   Sigma,
 } from "lucide-react";
-import type {
-  AgentFilter,
-  DayUsage,
-  TokenUsageFields,
-  UsageStats,
-} from "@/lib/types";
+import type { AgentFilter, DayUsage, UsageStats } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { AgentBadge } from "@/components/AgentBadge";
 import { useT } from "@/i18n";
-import { cn, encodePath, formatNumber, formatTokens } from "@/lib/utils";
+import {
+  cn,
+  encodePath,
+  formatCost,
+  formatNumber,
+  formatTokens,
+  formatUsageCost,
+  usageTotal as totalTokens,
+} from "@/lib/utils";
 
 const AXIS = "var(--muted)";
 const GRID = "var(--border)";
 const ACCENT = "var(--accent)";
-
-function totalTokens(row: TokenUsageFields): number {
-  return row.uncachedInput + row.cacheRead + row.cacheCreation + row.output;
-}
-
-function formatCost(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "—";
-  if (value >= 100) return `$${Math.round(value).toLocaleString("en-US")}`;
-  return `$${value.toFixed(2)}`;
-}
-
-function formatUsageCost(row: TokenUsageFields): string {
-  if (
-    totalTokens(row) > 0 &&
-    row.unknownModelTokens >= totalTokens(row)
-  ) {
-    return "—";
-  }
-  return formatCost(row.estCostUsd);
-}
 
 function shortModel(model: string): string {
   return model.replace(/^claude-/, "");

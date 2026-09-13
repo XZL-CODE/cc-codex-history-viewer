@@ -5,17 +5,22 @@ use crate::models::SettingsInput;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::Arc;
+use tauri::async_runtime::{Mutex as AsyncMutex, RwLock};
 use tauri::{AppHandle, Manager};
 
 pub struct AppState {
-    pub index: Mutex<Option<AppIndex>>,
+    /// The current in-memory index. Readers clone the `Arc` and never wait for a rebuild.
+    pub index: RwLock<Option<Arc<AppIndex>>>,
+    /// Serializes index builds so concurrent commands share one build instead of racing.
+    pub build_lock: AsyncMutex<()>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
-            index: Mutex::new(None),
+            index: RwLock::new(None),
+            build_lock: AsyncMutex::new(()),
         }
     }
 }

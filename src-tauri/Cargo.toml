@@ -1,6 +1,6 @@
 [package]
 name = "cc-history-viewer"
-version = "0.6.0"
+version = "0.7.0"
 description = "Local history viewer for Claude Code and OpenAI Codex"
 authors = ["xzl"]
 edition = "2021"
@@ -15,6 +15,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-window-state = "2"
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"

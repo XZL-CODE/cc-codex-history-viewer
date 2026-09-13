@@ -1,6 +1,7 @@
 // 模块声明为 pub：tests/ 下的集成测试（golden 测试）需要访问 parser 等模块。
 pub mod codex_parser;
 pub mod commands;
+pub mod content_search;
 pub mod export;
 pub mod indexer;
 pub mod models;
@@ -14,12 +15,15 @@ use state::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_projects,
             commands::get_project_prompts,
             commands::get_recent_prompts,
             commands::search_prompts,
+            commands::search_conversations,
             commands::get_stats,
             commands::get_project_sessions,
             commands::get_conversation,

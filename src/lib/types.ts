@@ -12,6 +12,8 @@ export interface PromptEntry {
   timestamp: number;
   origin: PromptOrigin;
   sessionId: string | null;
+  /** sessionId 对应的会话文件存在于索引中，可以打开详情 */
+  hasConversation: boolean;
   gitBranch: string | null;
   isCommand: boolean;
   pastedCount: number;
@@ -35,6 +37,31 @@ export interface SearchResult {
   matchRanges: [number, number][];
 }
 
+/** 全文搜索在会话文件中的一条命中 */
+export interface ConversationHit {
+  agent: Agent;
+  sessionId: string;
+  project: string;
+  sessionTitle: string;
+  sessionStartedAt: number;
+  /** 与详情页 ChatMessage.uuid 对应；详情合并掉该消息时按时间戳回退定位 */
+  messageUuid: string;
+  timestamp: number;
+  role: "user" | "assistant";
+  kind: "text" | "thinking" | "tool_use";
+  toolName: string | null;
+  snippet: string;
+  matchRanges: [number, number][];
+}
+
+export interface ConversationSearchResponse {
+  hits: ConversationHit[];
+  scannedFiles: number;
+  matchedSessions: number;
+  truncated: boolean;
+  elapsedMs: number;
+}
+
 export interface SessionSummary {
   agent: Agent;
   sessionId: string;
@@ -47,6 +74,7 @@ export interface SessionSummary {
   cliVersion: string | null;
   source: string | null;
   models: string[];
+  usage: SessionUsage;
 }
 
 export type BlockKind =
@@ -61,6 +89,8 @@ export interface ContentBlock {
   text: string | null;
   toolName: string | null;
   toolInput: unknown | null;
+  /** text 已按展示上限截断 */
+  truncated: boolean;
 }
 
 export interface ChatMessage {
@@ -83,6 +113,7 @@ export interface ConversationDetail {
   source: string | null;
   models: string[];
   messages: ChatMessage[];
+  usage: SessionUsage;
 }
 
 export interface DayCount {
@@ -144,6 +175,12 @@ export interface UsageStats extends TokenUsageFields {
   byProject: ProjectUsage[];
 }
 
+/** 归属到单个会话的用量；fork/resume 复制的调用只计入最早的会话 */
+export interface SessionUsage extends Omit<TokenUsageFields, "estCostUsd"> {
+  estCostUsd: number;
+  assistantMessages: number;
+}
+
 export interface AppStats {
   totalPrompts: number;
   totalProjects: number;
@@ -167,6 +204,15 @@ export interface IndexMeta {
   fromCache: boolean;
   sourceFiles: number;
   reparsedFiles: number;
+}
+
+export type IndexPhase = "scanning" | "parsing" | "assembling" | "done";
+
+/** 后端 `index-progress` 事件的载荷 */
+export interface IndexProgress {
+  phase: IndexPhase;
+  done: number;
+  total: number;
 }
 
 export type SortMode = "newest" | "oldest" | "longest";

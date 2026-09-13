@@ -443,6 +443,20 @@ pub fn build_conversation_markdown(
         label("消息数", "Messages"),
         detail.messages.len()
     ));
+    if detail.usage.total_tokens_including_cache > 0 {
+        md.push_str(&format!(
+            "> **{}**　{}\n",
+            label("Token（含缓存）", "Tokens (incl. cache)"),
+            detail.usage.total_tokens_including_cache
+        ));
+        if detail.usage.unknown_model_tokens < detail.usage.total_tokens_including_cache {
+            md.push_str(&format!(
+                "> **{}**　${:.2}\n",
+                label("API 等价估算成本", "API-equivalent estimated cost"),
+                detail.usage.est_cost_usd
+            ));
+        }
+    }
     md.push_str(&format!(
         "> **{}**　`{}`\n\n---\n\n",
         label("会话 ID", "Session ID"),
@@ -553,13 +567,9 @@ fn now_label() -> String {
     Local::now().format("%Y-%m-%d %H:%M").to_string()
 }
 
-/// 取路径末级目录名作为展示名。
+/// 取路径末级目录名作为展示名（与索引层共用同一规则，兼容 Windows 分隔符）。
 fn project_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    match trimmed.rsplit('/').next() {
-        Some(s) if !s.is_empty() => s.to_string(),
-        _ => path.to_string(),
-    }
+    crate::indexer::project_name(path)
 }
 
 /// /Users/xxx/... → ~/...
@@ -591,6 +601,7 @@ mod tests {
             timestamp: ts,
             origin: PromptOrigin::Conversation,
             session_id: None,
+            has_conversation: false,
             git_branch: None,
             is_command,
             pasted_count: 0,
@@ -727,6 +738,7 @@ mod tests {
             text: Some(t.to_string()),
             tool_name: None,
             tool_input: None,
+            truncated: false,
         }
     }
 
@@ -763,12 +775,14 @@ mod tests {
                             text: Some("想一想".into()),
                             tool_name: None,
                             tool_input: None,
+                            truncated: false,
                         },
                         ContentBlock {
                             kind: "tool_use".into(),
                             text: None,
                             tool_name: Some("Bash".into()),
                             tool_input: Some(serde_json::json!({"command": "ls"})),
+                            truncated: false,
                         },
                     ],
                 },
@@ -781,6 +795,7 @@ mod tests {
                     blocks: vec![text_block("已完成")],
                 },
             ],
+            usage: crate::models::SessionUsage::default(),
         };
 
         // 不含工具：纯工具消息整条消失

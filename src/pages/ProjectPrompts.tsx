@@ -1,6 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Folder, GitBranch, ListTree, MessagesSquare } from "lucide-react";
+import {
+  Clock,
+  Folder,
+  GitBranch,
+  ListTree,
+  MessagesSquare,
+} from "lucide-react";
 import { useStore } from "@/store";
 import {
   useProjectPrompts,
@@ -11,7 +17,15 @@ import { PromptList } from "@/components/PromptList";
 import { Badge, CenterMessage, Skeleton } from "@/components/ui";
 import { useT, type DictKey } from "@/i18n";
 import type { SessionSummary, SortMode } from "@/lib/types";
-import { absoluteTime, cn, formatNumber } from "@/lib/utils";
+import {
+  absoluteTime,
+  cn,
+  formatDuration,
+  formatNumber,
+  formatTokens,
+  formatUsageCost,
+  pathBasename,
+} from "@/lib/utils";
 import { errMessage } from "@/lib/api";
 import { AgentBadge, AgentFilterControl } from "@/components/AgentBadge";
 
@@ -20,6 +34,41 @@ const sortOptions: { value: SortMode; labelKey: DictKey }[] = [
   { value: "oldest", labelKey: "sortOldest" },
   { value: "longest", labelKey: "sortLongest" },
 ];
+
+type SessionSort = "newest" | "cost" | "messages" | "duration";
+
+const sessionSortOptions: { value: SessionSort; labelKey: DictKey }[] = [
+  { value: "newest", labelKey: "sortNewest" },
+  { value: "cost", labelKey: "sortByCost" },
+  { value: "messages", labelKey: "sortByMessages" },
+  { value: "duration", labelKey: "sortByDuration" },
+];
+
+function sessionDuration(session: SessionSummary): number {
+  return Math.max(session.endedAt - session.startedAt, 0);
+}
+
+function sortSessions(list: SessionSummary[], sort: SessionSort) {
+  const sorted = [...list];
+  switch (sort) {
+    case "cost":
+      sorted.sort(
+        (a, b) =>
+          b.usage.estCostUsd - a.usage.estCostUsd ||
+          b.usage.totalTokensIncludingCache - a.usage.totalTokensIncludingCache
+      );
+      break;
+    case "messages":
+      sorted.sort((a, b) => b.messageCount - a.messageCount);
+      break;
+    case "duration":
+      sorted.sort((a, b) => sessionDuration(b) - sessionDuration(a));
+      break;
+    default:
+      sorted.sort((a, b) => b.startedAt - a.startedAt);
+  }
+  return sorted;
+}
 
 function ListSkeleton() {
   return (
@@ -58,6 +107,36 @@ function TabButton({
   );
 }
 
+function SortControl<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; labelKey: DictKey }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+            value === option.value
+              ? "bg-accent text-accent-fg"
+              : "text-muted hover:text-foreground"
+          )}
+        >
+          {t(option.labelKey)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SessionRow({
   session,
   showAgentBadge,
@@ -66,6 +145,8 @@ function SessionRow({
   showAgentBadge: boolean;
 }) {
   const t = useT();
+  const duration = sessionDuration(session);
+  const tokens = session.usage.totalTokensIncludingCache;
   return (
     <Link
       to={`/conversation/${session.agent}/${session.sessionId}`}
@@ -80,6 +161,21 @@ function SessionRow({
         <span>
           {t("messagesCount", { count: formatNumber(session.messageCount) })}
         </span>
+        {duration > 0 && (
+          <span className="flex items-center gap-1">
+            <Clock size={11} />
+            {formatDuration(duration)}
+          </span>
+        )}
+        {tokens > 0 && (
+          <span
+            className="font-medium text-foreground"
+            title={t("tokenTotalSuffix", { value: formatNumber(tokens) })}
+          >
+            {t("tokensUnit", { value: formatTokens(tokens) })} ·{" "}
+            {formatUsageCost(session.usage)}
+          </span>
+        )}
         {session.gitBranch && (
           <span className="flex items-center gap-1">
             <GitBranch size={11} />
@@ -106,13 +202,14 @@ function SessionRow({
 export function ProjectPrompts() {
   const params = useParams();
   const projectPath = params.encoded ?? "";
-  const name = projectPath.split("/").filter(Boolean).pop() || projectPath;
+  const name = pathBasename(projectPath);
 
   // 「当前文件夹」由 Layout 根据路由统一登记
   const { includeCommands, projectAgentFilter, setProjectAgentFilter } =
     useStore();
   const t = useT();
   const [sort, setSort] = useState<SortMode>("newest");
+  const [sessionSort, setSessionSort] = useState<SessionSort>("newest");
   const [tab, setTab] = useState<"prompts" | "sessions">("prompts");
 
   const projectsQ = useProjects(projectAgentFilter);
@@ -132,6 +229,10 @@ export function ProjectPrompts() {
   const promptItems = useMemo(
     () => (promptsQ.data ?? []).map((entry) => ({ entry })),
     [promptsQ.data]
+  );
+  const sessions = useMemo(
+    () => sortSessions(sessionsQ.data ?? [], sessionSort),
+    [sessionsQ.data, sessionSort]
   );
 
   return (
@@ -202,23 +303,14 @@ export function ProjectPrompts() {
           </TabButton>
         </div>
 
-        {tab === "prompts" && (
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-0.5">
-            {sortOptions.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => setSort(o.value)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                  sort === o.value
-                    ? "bg-accent text-accent-fg"
-                    : "text-muted hover:text-foreground"
-                )}
-              >
-                {t(o.labelKey)}
-              </button>
-            ))}
-          </div>
+        {tab === "prompts" ? (
+          <SortControl options={sortOptions} value={sort} onChange={setSort} />
+        ) : (
+          <SortControl
+            options={sessionSortOptions}
+            value={sessionSort}
+            onChange={setSessionSort}
+          />
         )}
       </div>
 
@@ -251,9 +343,9 @@ export function ProjectPrompts() {
           title={t("loadFailed")}
           hint={errMessage(sessionsQ.error)}
         />
-      ) : sessionsQ.data && sessionsQ.data.length > 0 ? (
+      ) : sessions.length > 0 ? (
         <div className="space-y-2.5">
-          {sessionsQ.data.map((s) => (
+          {sessions.map((s) => (
             <SessionRow
               key={`${s.agent}:${s.sessionId}`}
               session={s}

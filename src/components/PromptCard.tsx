@@ -45,8 +45,7 @@ export function PromptCard({
   showAgentBadge?: boolean;
 }) {
   const t = useT();
-  // 点击卡片内链接时清空搜索词：否则搜索结果层会一直盖住目标页面（路由其实已跳转）
-  const { setProjectAgentFilter, setQuery } = useStore();
+  const { setProjectAgentFilter } = useStore();
   const [expanded, setExpanded] = useState(false);
   const { copied, copy } = useCopy();
   const collapsible = entry.charCount > 150 || entry.text.includes("\n");
@@ -87,10 +86,7 @@ export function PromptCard({
         {showProject && entry.project && (
           <Link
             to={`/project/${encodePath(entry.project)}`}
-            onClick={() => {
-              setQuery("");
-              setProjectAgentFilter("all");
-            }}
+            onClick={() => setProjectAgentFilter("all")}
             className="flex items-center gap-1 transition-colors hover:text-accent"
             title={entry.project}
           >
@@ -141,10 +137,9 @@ export function PromptCard({
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
           </button>
-          {entry.sessionId && (
+          {entry.sessionId && entry.hasConversation && (
             <Link
               to={`/conversation/${entry.agent}/${entry.sessionId}?t=${entry.timestamp}`}
-              onClick={() => setQuery("")}
               className="flex items-center gap-1 font-medium text-accent hover:underline"
             >
               <MessageSquare size={11} />

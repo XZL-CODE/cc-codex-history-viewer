@@ -7,12 +7,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type {
-  DayCount,
-  HourCount,
-  ProjectCount,
-  WeekdayCount,
-} from "@/lib/types";
+import type { HourCount, WeekdayCount } from "@/lib/types";
 import { useT, type DictKey } from "@/i18n";
 
 const AXIS = "var(--muted)";
@@ -38,38 +33,6 @@ function TooltipBox({ active, payload, label, unit }: TooltipProps & { unit?: st
   );
 }
 
-/** 最近 14 个有记录日期的活跃度。 */
-export function ActivityChart({ data }: { data: DayCount[] }) {
-  const recent = data.slice(-14);
-  if (recent.length === 0) {
-    return <EmptyChart />;
-  }
-  return (
-    <ResponsiveContainer width="100%" height={174}>
-      <BarChart data={recent} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-        <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
-        <XAxis
-          dataKey="day"
-          tick={{ fill: AXIS, fontSize: 10 }}
-          tickFormatter={(d: string) => d.slice(5)}
-          minTickGap={28}
-          stroke={GRID}
-        />
-        <YAxis
-          tick={{ fill: AXIS, fontSize: 10 }}
-          stroke={GRID}
-          allowDecimals={false}
-          width={32}
-        />
-        <Tooltip
-          content={<TooltipBox />}
-          cursor={{ fill: "var(--surface-2)" }}
-        />
-        <Bar dataKey="count" fill={ACCENT} radius={[3, 3, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
 
 /** 24 小时活跃分布 */
 export function HourChart({ data }: { data: HourCount[] }) {
@@ -143,48 +106,4 @@ export function WeekdayChart({ data }: { data: WeekdayCount[] }) {
   );
 }
 
-/** 项目 Prompt 数量 Top 榜 */
-export function ProjectChart({ data }: { data: ProjectCount[] }) {
-  if (data.length === 0) {
-    return <EmptyChart />;
-  }
-  const height = Math.max(160, data.length * 34 + 24);
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart
-        layout="vertical"
-        data={data}
-        margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
-      >
-        <CartesianGrid stroke={GRID} strokeDasharray="3 3" horizontal={false} />
-        <XAxis
-          type="number"
-          tick={{ fill: AXIS, fontSize: 10 }}
-          stroke={GRID}
-          allowDecimals={false}
-        />
-        <YAxis
-          type="category"
-          dataKey="name"
-          tick={{ fill: AXIS, fontSize: 11 }}
-          stroke={GRID}
-          width={120}
-        />
-        <Tooltip
-          content={<TooltipBox />}
-          cursor={{ fill: "var(--surface-2)" }}
-        />
-        <Bar dataKey="count" fill={ACCENT} radius={[0, 3, 3, 0]} barSize={16} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
 
-function EmptyChart() {
-  const t = useT();
-  return (
-    <div className="flex h-52 items-center justify-center text-xs text-muted">
-      {t("noData")}
-    </div>
-  );
-}

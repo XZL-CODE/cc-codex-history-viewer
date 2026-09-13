@@ -3,6 +3,7 @@ import { twMerge } from "tailwind-merge";
 import { format, formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { getCurrentLang, translate } from "@/i18n";
+import type { TokenUsageFields } from "./types";
 
 /** 合并 Tailwind 类名 */
 export function cn(...inputs: ClassValue[]) {
@@ -60,11 +61,28 @@ export function formatTokens(n: number): string {
   return String(v);
 }
 
-/** 把绝对路径压缩为可读短路径：/Users/xxx/... → ~/... */
+/** 把绝对路径压缩为可读短路径：/Users/xxx/... 与 C:\Users\xxx\... → ~... */
 export function prettyPath(path: string): string {
   if (!path) return "";
-  return path.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
+  return path
+    .replace(/^\/Users\/[^/]+/, "~")
+    .replace(/^\/home\/[^/]+/, "~")
+    .replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+/, "~");
 }
+
+/** 路径最后一段，同时接受 / 与 \ 分隔符 */
+export function pathBasename(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : path;
+}
+
+/** 当前是否 macOS（决定快捷键修饰键） */
+export const isMac =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+/** 快捷键提示里的修饰键标签 */
+export const modKeyLabel = isMac ? "⌘" : "Ctrl";
 
 /** react-router 路由参数编码 */
 export function encodePath(path: string): string {
@@ -76,6 +94,40 @@ export function decodePath(param: string): string {
   } catch {
     return param;
   }
+}
+
+/** 总 Token（含缓存），与后端 totalTokensIncludingCache 口径一致 */
+export function usageTotal(row: TokenUsageFields): number {
+  return row.uncachedInput + row.cacheRead + row.cacheCreation + row.output;
+}
+
+/** 美元金额：≥100 取整并加千分位，否则保留两位小数；无值显示 — */
+export function formatCost(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  if (value >= 100) return `$${Math.round(value).toLocaleString("en-US")}`;
+  return `$${value.toFixed(2)}`;
+}
+
+/** 一行用量的成本：全部来自未知定价模型时显示 — */
+export function formatUsageCost(row: TokenUsageFields): string {
+  const total = usageTotal(row);
+  if (total > 0 && row.unknownModelTokens >= total) return "—";
+  return formatCost(row.estCostUsd);
+}
+
+/** 时长，如「1 小时 5 分」/ "1 h 5 min"（跟随当前界面语言） */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const totalMinutes = Math.round(ms / 60_000);
+  if (totalMinutes < 1) {
+    return translate("durationSeconds", { s: Math.max(1, Math.round(ms / 1000)) });
+  }
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return translate("durationDays", { d: days, h: hours });
+  if (hours > 0) return translate("durationHoursMinutes", { h: hours, m: minutes });
+  return translate("durationMinutes", { m: minutes });
 }
 
 /** 两个时间戳之间的天数（含两端） */

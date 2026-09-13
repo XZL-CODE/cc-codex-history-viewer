@@ -1,8 +1,10 @@
 //! JSONL 数据解析：history.jsonl 与 projects/**/*.jsonl。
 
-use crate::models::{Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage};
+use crate::models::{
+    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, SessionUsage,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -67,6 +69,17 @@ pub(crate) fn for_each_jsonl_line(
     path: &Path,
     mut callback: impl FnMut(usize, &str),
 ) -> std::io::Result<()> {
+    for_each_jsonl_line_while(path, |line_no, line| {
+        callback(line_no, line);
+        true
+    })
+}
+
+/// Like [`for_each_jsonl_line`], but stops reading as soon as the callback returns `false`.
+pub(crate) fn for_each_jsonl_line_while(
+    path: &Path,
+    mut callback: impl FnMut(usize, &str) -> bool,
+) -> std::io::Result<()> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut bytes = Vec::new();
@@ -84,7 +97,9 @@ pub(crate) fn for_each_jsonl_line(
             bytes.pop();
         }
         let line = String::from_utf8_lossy(&bytes);
-        callback(line_no, line.trim());
+        if !callback(line_no, line.trim()) {
+            break;
+        }
         line_no += 1;
     }
     Ok(())
@@ -203,7 +218,7 @@ struct RawUsage {
 }
 
 /// ISO8601 字符串转毫秒时间戳
-fn iso_to_ms(s: &str) -> Option<i64> {
+pub(crate) fn iso_to_ms(s: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| dt.timestamp_millis())
@@ -483,6 +498,8 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
     let mut ended_at = i64::MIN;
     let mut messages: Vec<ChatMessage> = Vec::new();
     let mut models: HashSet<String> = HashSet::new();
+    // tool_use id -> tool name, so每个 tool_result 都能标出产生它的工具
+    let mut tool_names: HashMap<String, String> = HashMap::new();
 
     for bytes in reader.split(b'\n') {
         let bytes = match bytes {
@@ -543,6 +560,7 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
                                 text: Some(text),
                                 tool_name: None,
                                 tool_input: None,
+                                truncated: false,
                             }],
                         });
                     }
@@ -565,7 +583,7 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
             models.insert(model.clone());
         }
         let role = msg.role.clone().unwrap_or_else(|| ltype.to_string());
-        let blocks = content_to_blocks(msg.content.as_ref());
+        let blocks = content_to_blocks(msg.content.as_ref(), &mut tool_names);
         if blocks.is_empty() {
             continue;
         }
@@ -601,13 +619,14 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
             models
         },
         messages,
+        usage: SessionUsage::default(),
     })
 }
 
 // ----------------------------- 文本处理 -----------------------------
 
 /// 从 user 消息 content 提取可作为 prompt 的纯文本
-fn extract_prompt_text(content: &serde_json::Value) -> Option<String> {
+pub(crate) fn extract_prompt_text(content: &serde_json::Value) -> Option<String> {
     let raw = match content {
         serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Array(arr) => {
@@ -624,7 +643,7 @@ fn extract_prompt_text(content: &serde_json::Value) -> Option<String> {
                         }
                     }
                     "image" => {
-                        parts.push("[图片]".to_string());
+                        parts.push("[Image]".to_string());
                         saw_text = true;
                     }
                     "tool_result" => saw_tool_result = true,
@@ -778,29 +797,37 @@ fn prettify_display_text(s: &str) -> String {
         .to_string()
 }
 
-/// 字符级截断
-fn truncate(s: &str) -> String {
-    if s.chars().count() > MAX_BLOCK_CHARS {
-        let t: String = s.chars().take(MAX_BLOCK_CHARS).collect();
-        format!("{t}\n…（内容过长，已截断）")
-    } else {
-        s.to_string()
+/// Character-level clip for display blocks. Returns the clipped text and whether it was cut.
+pub(crate) fn clip(s: &str, max_chars: usize) -> (String, bool) {
+    match s.char_indices().nth(max_chars) {
+        Some((byte_index, _)) => (s[..byte_index].to_string(), true),
+        None => (s.to_string(), false),
     }
 }
 
-/// 把消息 content 转成内容块列表（用于对话详情展示）
-fn content_to_blocks(content: Option<&serde_json::Value>) -> Vec<ContentBlock> {
+fn clipped_block(kind: &str, text: &str, tool_name: Option<String>) -> ContentBlock {
+    let (text, truncated) = clip(text, MAX_BLOCK_CHARS);
+    ContentBlock {
+        kind: kind.to_string(),
+        text: Some(text),
+        tool_name,
+        tool_input: None,
+        truncated,
+    }
+}
+
+/// 把消息 content 转成内容块列表（用于对话详情展示）。
+/// `tool_names` 在整个会话内累积 tool_use id 到工具名的映射，供 tool_result 标注来源工具。
+fn content_to_blocks(
+    content: Option<&serde_json::Value>,
+    tool_names: &mut HashMap<String, String>,
+) -> Vec<ContentBlock> {
     let mut blocks = Vec::new();
     match content {
         Some(serde_json::Value::String(s)) => {
             let t = prettify_display_text(s.trim());
             if !t.is_empty() {
-                blocks.push(ContentBlock {
-                    kind: "text".to_string(),
-                    text: Some(truncate(&t)),
-                    tool_name: None,
-                    tool_input: None,
-                });
+                blocks.push(clipped_block("text", &t, None));
             }
         }
         Some(serde_json::Value::Array(arr)) => {
@@ -813,22 +840,12 @@ fn content_to_blocks(content: Option<&serde_json::Value>) -> Vec<ContentBlock> {
                             if t.is_empty() {
                                 continue;
                             }
-                            blocks.push(ContentBlock {
-                                kind: "text".to_string(),
-                                text: Some(truncate(&t)),
-                                tool_name: None,
-                                tool_input: None,
-                            });
+                            blocks.push(clipped_block("text", &t, None));
                         }
                     }
                     "thinking" => {
                         if let Some(t) = b.get("thinking").and_then(|v| v.as_str()) {
-                            blocks.push(ContentBlock {
-                                kind: "thinking".to_string(),
-                                text: Some(truncate(t)),
-                                tool_name: None,
-                                tool_input: None,
-                            });
+                            blocks.push(clipped_block("thinking", t, None));
                         }
                     }
                     "tool_use" => {
@@ -837,28 +854,32 @@ fn content_to_blocks(content: Option<&serde_json::Value>) -> Vec<ContentBlock> {
                             .and_then(|v| v.as_str())
                             .unwrap_or("tool")
                             .to_string();
+                        if let Some(id) = b.get("id").and_then(|v| v.as_str()) {
+                            tool_names.insert(id.to_string(), name.clone());
+                        }
                         blocks.push(ContentBlock {
                             kind: "tool_use".to_string(),
                             text: None,
                             tool_name: Some(name),
                             tool_input: b.get("input").cloned(),
+                            truncated: false,
                         });
                     }
                     "tool_result" => {
                         let txt = tool_result_text(b.get("content"));
-                        blocks.push(ContentBlock {
-                            kind: "tool_result".to_string(),
-                            text: Some(truncate(&txt)),
-                            tool_name: None,
-                            tool_input: None,
-                        });
+                        let tool_name = b
+                            .get("tool_use_id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|id| tool_names.get(id).cloned());
+                        blocks.push(clipped_block("tool_result", &txt, tool_name));
                     }
                     "image" => {
                         blocks.push(ContentBlock {
                             kind: "image".to_string(),
-                            text: Some("[图片]".to_string()),
+                            text: None,
                             tool_name: None,
                             tool_input: None,
+                            truncated: false,
                         });
                     }
                     _ => {}
@@ -883,7 +904,7 @@ fn tool_result_text(content: Option<&serde_json::Value>) -> String {
                         parts.push(t.to_string());
                     }
                 } else if bt == "image" {
-                    parts.push("[图片]".to_string());
+                    parts.push("[Image]".to_string());
                 }
             }
             parts.join("\n")
@@ -1034,7 +1055,17 @@ mod tests {
     #[test]
     fn extract_image_becomes_placeholder() {
         let v = json!([{"type": "image", "source": {"type": "base64"}}]);
-        assert_eq!(extract_prompt_text(&v), Some("[图片]".to_string()));
+        assert_eq!(extract_prompt_text(&v), Some("[Image]".to_string()));
+    }
+
+    // ---------- clip ----------
+
+    #[test]
+    fn clip_marks_truncation_without_cutting_characters() {
+        assert_eq!(clip("héllo", 10), ("héllo".to_string(), false));
+        assert_eq!(clip("héllo", 5), ("héllo".to_string(), false));
+        assert_eq!(clip("héllo", 2), ("hé".to_string(), true));
+        assert_eq!(clip("", 0), (String::new(), false));
     }
 
     // ---------- iso_to_ms ----------

@@ -1,7 +1,7 @@
 {
   "name": "coding-agent-history-viewer",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Local history viewer for Claude Code and OpenAI Codex",
   "type": "module",
   "scripts": {
@@ -14,13 +14,18 @@
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",
     "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "diff": "^9.0.0",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.28.0",
     "recharts": "^2.13.3",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {

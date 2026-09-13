@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEDUP_WINDOW_MS: i64 = 5 * 60 * 1000;
@@ -21,6 +22,12 @@ pub struct AppIndex {
     pub prompts: Vec<PromptEntry>,
     pub sessions: Vec<SessionSummary>,
     pub session_files: HashMap<(Agent, String), String>,
+    /// Usage attributed per (agent, session id); see [`attribute_session_usage`].
+    pub session_usage: HashMap<(Agent, String), SessionUsage>,
+    /// Globally unique usage events (fork/resume copies removed), for on-demand range statistics.
+    pub usage_events: Vec<UsageEntry>,
+    /// CLI versions seen in Claude `sessions/*.json`, merged into every statistics view.
+    pub claude_cli_versions: Vec<String>,
     projects_all: Vec<ProjectInfo>,
     projects_claude: Vec<ProjectInfo>,
     projects_codex: Vec<ProjectInfo>,
@@ -149,15 +156,40 @@ struct FileSpec {
     path: PathBuf,
 }
 
+/// Progress callback invoked from parser worker threads while an index builds.
+pub type ProgressFn<'a> = &'a (dyn Fn(IndexProgress) + Sync);
+
+fn no_progress(_: IndexProgress) {}
+
 pub fn load_or_build(paths: &DataPaths, cache_path: Option<&Path>) -> AppIndex {
-    build(paths, cache_path, false)
+    build(paths, cache_path, false, &no_progress)
 }
 
 pub fn build_and_cache(paths: &DataPaths, cache_path: Option<&Path>) -> AppIndex {
-    build(paths, cache_path, true)
+    build(paths, cache_path, true, &no_progress)
 }
 
-fn build(paths: &DataPaths, cache_path: Option<&Path>, force: bool) -> AppIndex {
+/// Build the index, reusing the cache unless `force` is set, and report progress as files parse.
+pub fn build_with_progress(
+    paths: &DataPaths,
+    cache_path: Option<&Path>,
+    force: bool,
+    progress: ProgressFn,
+) -> AppIndex {
+    build(paths, cache_path, force, progress)
+}
+
+fn build(
+    paths: &DataPaths,
+    cache_path: Option<&Path>,
+    force: bool,
+    progress: ProgressFn,
+) -> AppIndex {
+    progress(IndexProgress {
+        phase: IndexPhase::Scanning,
+        done: 0,
+        total: 0,
+    });
     let specs = collect_source_files(paths);
     let mut old = if force {
         CacheV5::empty()
@@ -217,7 +249,12 @@ fn build(paths: &DataPaths, cache_path: Option<&Path>, force: bool) -> AppIndex 
     }
 
     let reparsed_files = to_parse.len();
-    for (key, fingerprint, conv) in parse_files_parallel(to_parse) {
+    progress(IndexProgress {
+        phase: IndexPhase::Parsing,
+        done: 0,
+        total: reparsed_files,
+    });
+    for (key, fingerprint, conv) in parse_files_parallel(to_parse, progress) {
         files.insert(
             key,
             FileCache {
@@ -240,20 +277,40 @@ fn build(paths: &DataPaths, cache_path: Option<&Path>, force: bool) -> AppIndex 
             write_cache(path, &cache);
         }
     }
-    assemble_index(paths, cache, from_cache, reparsed_files)
+    progress(IndexProgress {
+        phase: IndexPhase::Assembling,
+        done: reparsed_files,
+        total: reparsed_files,
+    });
+    let index = assemble_index(paths, cache, from_cache, reparsed_files);
+    progress(IndexProgress {
+        phase: IndexPhase::Done,
+        done: reparsed_files,
+        total: reparsed_files,
+    });
+    index
 }
 
 fn parse_files_parallel(
     items: Vec<(String, FileFingerprint, FileSpec)>,
+    progress: ProgressFn,
 ) -> Vec<(String, FileFingerprint, ConvFileResult)> {
+    let total = items.len();
+    let finished = AtomicUsize::new(0);
     items
         .into_par_iter()
         .filter_map(|(key, fingerprint, spec)| {
             let result = match spec.agent {
                 Agent::Claude => parser::parse_conversation_file(&spec.path),
                 Agent::Codex => codex_parser::parse_rollout_file(&spec.path),
-            }?;
-            Some((key, fingerprint, result))
+            };
+            let done = finished.fetch_add(1, Ordering::Relaxed) + 1;
+            progress(IndexProgress {
+                phase: IndexPhase::Parsing,
+                done,
+                total,
+            });
+            result.map(|result| (key, fingerprint, result))
         })
         .collect()
 }
@@ -335,9 +392,10 @@ fn assemble_index(
     resolve_missing_claude_projects(&histories, &mut conv);
     associate_codex_history(&mut histories, &conv);
 
-    let prompts = merge_prompts(histories, &conv);
+    let mut prompts = merge_prompts(histories, &conv);
     let winners = session_winners(paths, &conv);
-    let sessions = build_sessions(&winners);
+    let session_usage = attribute_session_usage(&conv);
+    let sessions = build_sessions(&winners, &session_usage);
     let session_files = winners
         .iter()
         .map(|result| {
@@ -347,40 +405,54 @@ fn assemble_index(
             )
         })
         .collect();
+    let present_sessions: HashSet<(Agent, &str)> = winners
+        .iter()
+        .map(|result| (result.agent, result.session_id.as_str()))
+        .collect();
+    for prompt in &mut prompts {
+        prompt.has_conversation = prompt
+            .session_id
+            .as_deref()
+            .is_some_and(|session_id| present_sessions.contains(&(prompt.agent, session_id)));
+    }
 
     let projects_all = aggregate_projects(&prompts, &sessions, AgentFilter::All);
     let projects_claude = aggregate_projects(&prompts, &sessions, AgentFilter::Claude);
     let projects_codex = aggregate_projects(&prompts, &sessions, AgentFilter::Codex);
     let extra_claude_versions = collect_claude_session_versions(&paths.claude.sessions);
+    let usage_events = collect_unique_events(&conv);
     let stats_all = compute_stats(
         &prompts,
         &sessions,
-        &conv,
+        &usage_events,
         AgentFilter::All,
-        projects_all.len(),
         &extra_claude_versions,
+        None,
     );
     let stats_claude = compute_stats(
         &prompts,
         &sessions,
-        &conv,
+        &usage_events,
         AgentFilter::Claude,
-        projects_claude.len(),
         &extra_claude_versions,
+        None,
     );
     let stats_codex = compute_stats(
         &prompts,
         &sessions,
-        &conv,
+        &usage_events,
         AgentFilter::Codex,
-        projects_codex.len(),
         &extra_claude_versions,
+        None,
     );
 
     AppIndex {
         prompts,
         sessions,
         session_files,
+        session_usage,
+        usage_events,
+        claude_cli_versions: extra_claude_versions,
         projects_all,
         projects_claude,
         projects_codex,
@@ -411,7 +483,7 @@ fn resolve_missing_claude_projects(history: &[RawPrompt], conv: &mut [ConvFileRe
     }
     let decoded: HashMap<String, String> = paths
         .into_iter()
-        .map(|path| (path.replace('/', "-"), path))
+        .map(|path| (encode_claude_project_dir(&path), path))
         .collect();
 
     for result in conv
@@ -437,6 +509,20 @@ fn resolve_missing_claude_projects(history: &[RawPrompt], conv: &mut [ConvFileRe
             }
         }
     }
+}
+
+/// Claude Code names each project directory by replacing every non-alphanumeric character of
+/// the cwd with `-`: `/Users/me/我的项目` becomes `-Users-me-----` and `C:\work` becomes `C--work`.
+fn encode_claude_project_dir(path: &str) -> String {
+    path.chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn associate_codex_history(history: &mut Vec<RawPrompt>, conv: &[ConvFileResult]) {
@@ -525,6 +611,7 @@ fn merge_prompts(history: Vec<RawPrompt>, conv: &[ConvFileResult]) -> Vec<Prompt
                 timestamp: base_ts,
                 origin,
                 session_id,
+                has_conversation: false,
                 git_branch,
                 is_command: text.starts_with('/'),
                 pasted_count,
@@ -584,7 +671,10 @@ fn session_winners<'a>(paths: &DataPaths, conv: &'a [ConvFileResult]) -> Vec<&'a
     values
 }
 
-fn build_sessions(conv: &[&ConvFileResult]) -> Vec<SessionSummary> {
+fn build_sessions(
+    conv: &[&ConvFileResult],
+    usage: &HashMap<(Agent, String), SessionUsage>,
+) -> Vec<SessionSummary> {
     let mut sessions: Vec<SessionSummary> = conv
         .iter()
         .filter(|result| !result.is_subagent)
@@ -600,6 +690,10 @@ fn build_sessions(conv: &[&ConvFileResult]) -> Vec<SessionSummary> {
             cli_version: result.version.clone(),
             source: result.source.clone(),
             models: result.models.clone(),
+            usage: usage
+                .get(&(result.agent, result.session_id.clone()))
+                .cloned()
+                .unwrap_or_default(),
         })
         .collect();
     sessions.sort_by(|left, right| {
@@ -612,10 +706,11 @@ fn build_sessions(conv: &[&ConvFileResult]) -> Vec<SessionSummary> {
     sessions
 }
 
-fn project_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
+/// Last path component, accepting both `/` and `\` so Windows working directories get a name.
+pub(crate) fn project_name(path: &str) -> String {
+    let trimmed = path.trim_end_matches(['/', '\\']);
     trimmed
-        .rsplit('/')
+        .rsplit(['/', '\\'])
         .next()
         .filter(|name| !name.is_empty())
         .unwrap_or(path)
@@ -702,22 +797,57 @@ fn aggregate_projects(
 
 // ----------------------------- Statistics -----------------------------
 
+fn in_range(timestamp: i64, range: Option<(i64, i64)>) -> bool {
+    range.map_or(true, |(start, end)| timestamp >= start && timestamp <= end)
+}
+
+/// Statistics for an arbitrary inclusive millisecond range, computed on demand from the index.
+pub fn compute_stats_in_range(
+    index: &AppIndex,
+    filter: AgentFilter,
+    start_ms: i64,
+    end_ms: i64,
+) -> AppStats {
+    compute_stats(
+        &index.prompts,
+        &index.sessions,
+        &index.usage_events,
+        filter,
+        &index.claude_cli_versions,
+        Some((start_ms, end_ms)),
+    )
+}
+
 fn compute_stats(
     prompts: &[PromptEntry],
     sessions: &[SessionSummary],
-    conv: &[ConvFileResult],
+    usage_events: &[UsageEntry],
     filter: AgentFilter,
-    total_projects: usize,
     extra_claude_versions: &[String],
+    range: Option<(i64, i64)>,
 ) -> AppStats {
     let selected_prompts: Vec<&PromptEntry> = prompts
         .iter()
         .filter(|prompt| filter.includes(prompt.agent))
+        .filter(|prompt| in_range(prompt.timestamp, range))
         .collect();
     let selected_sessions: Vec<&SessionSummary> = sessions
         .iter()
         .filter(|session| filter.includes(session.agent))
+        .filter(|session| in_range(session.started_at, range))
         .collect();
+    // Same definition as the project list: the union of non-empty cwd paths.
+    let total_projects = selected_prompts
+        .iter()
+        .map(|prompt| prompt.project.as_str())
+        .chain(
+            selected_sessions
+                .iter()
+                .map(|session| session.project.as_str()),
+        )
+        .filter(|project| !project.is_empty())
+        .collect::<HashSet<_>>()
+        .len();
     let mut history_prompts = 0usize;
     let mut conversation_prompts = 0usize;
     let mut command_count = 0usize;
@@ -837,7 +967,7 @@ fn compute_stats(
         by_weekday,
         top_projects,
         cli_versions,
-        usage: compute_usage(conv, filter),
+        usage: compute_usage(usage_events, filter, range),
     }
 }
 
@@ -864,13 +994,84 @@ impl UsageAggregate {
             }
         }
     }
+
+    fn into_session_usage(self) -> SessionUsage {
+        SessionUsage {
+            uncached_input: self.usage.uncached_input,
+            cache_read: self.usage.cache_read,
+            cache_creation: self.usage.cache_creation,
+            output: self.usage.output,
+            reasoning_output: self.usage.reasoning_output,
+            total_tokens_including_cache: self.usage.total_tokens_including_cache(),
+            est_cost_usd: self.cost,
+            unknown_model_tokens: self.unknown_tokens,
+            assistant_messages: self.messages,
+        }
+    }
 }
 
-fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
+/// The session that owns a file's usage: Claude sub-agent transcripts live under
+/// `<parent session id>/subagents/`, so their calls roll up into the parent session.
+fn owner_session_id(result: &ConvFileResult) -> String {
+    if result.agent == Agent::Claude && result.is_subagent {
+        let components: Vec<&std::ffi::OsStr> = result
+            .path
+            .components()
+            .map(|component| component.as_os_str())
+            .collect();
+        if let Some(position) = components
+            .iter()
+            .position(|component| *component == "subagents")
+        {
+            if let Some(parent) = position
+                .checked_sub(1)
+                .and_then(|index| components[index].to_str())
+                .filter(|parent| !parent.is_empty())
+            {
+                return parent.to_string();
+            }
+        }
+    }
+    result.session_id.clone()
+}
+
+/// Attribute every unique usage event to exactly one session. Files are visited from the
+/// earliest session onwards, so events copied into a later fork/resume stay with the original.
+fn attribute_session_usage(conv: &[ConvFileResult]) -> HashMap<(Agent, String), SessionUsage> {
+    let mut ordered: Vec<&ConvFileResult> = conv.iter().collect();
+    ordered.sort_by(|left, right| {
+        left.started_at
+            .cmp(&right.started_at)
+            .then_with(|| left.agent.cmp(&right.agent))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let mut seen: HashSet<(Agent, &str)> = HashSet::new();
+    let mut aggregates: HashMap<(Agent, String), UsageAggregate> = HashMap::new();
+    for result in ordered {
+        let owner = owner_session_id(result);
+        for event in &result.usage_entries {
+            if !seen.insert((event.agent, event.dedup_key.as_str())) {
+                continue;
+            }
+            let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
+            aggregates
+                .entry((result.agent, owner.clone()))
+                .or_default()
+                .add(event, cost);
+        }
+    }
+    aggregates
+        .into_iter()
+        .map(|(key, aggregate)| (key, aggregate.into_session_usage()))
+        .collect()
+}
+
+/// Every usage event across all files, sorted deterministically and deduplicated by
+/// `(agent, dedup_key)` so fork/resume copies count once.
+fn collect_unique_events(conv: &[ConvFileResult]) -> Vec<UsageEntry> {
     let mut events: Vec<&UsageEntry> = conv
         .iter()
         .flat_map(|result| result.usage_entries.iter())
-        .filter(|event| filter.includes(event.agent))
         .collect();
     events.sort_by(|left, right| {
         left.agent
@@ -879,8 +1080,20 @@ fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
             .then_with(|| left.dedup_key.cmp(&right.dedup_key))
             .then_with(|| left.project.cmp(&right.project))
     });
-
     let mut seen: HashSet<(Agent, &str)> = HashSet::new();
+    events
+        .into_iter()
+        .filter(|event| seen.insert((event.agent, event.dedup_key.as_str())))
+        .cloned()
+        .collect()
+}
+
+/// Aggregate already-unique events for one agent filter and optional time range.
+fn compute_usage(
+    events: &[UsageEntry],
+    filter: AgentFilter,
+    range: Option<(i64, i64)>,
+) -> UsageStats {
     let mut total = NormalizedUsage::default();
     let mut est_cost_usd = 0.0;
     let mut unknown_model_tokens = 0u64;
@@ -889,10 +1102,11 @@ fn compute_usage(conv: &[ConvFileResult], filter: AgentFilter) -> UsageStats {
     let mut by_day: HashMap<String, UsageAggregate> = HashMap::new();
     let mut by_project: HashMap<String, UsageAggregate> = HashMap::new();
 
-    for event in events {
-        if !seen.insert((event.agent, event.dedup_key.as_str())) {
-            continue;
-        }
+    for event in events
+        .iter()
+        .filter(|event| filter.includes(event.agent))
+        .filter(|event| in_range(event.timestamp, range))
+    {
         let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
         total.add_assign(event.usage);
         assistant_messages += 1;
@@ -1060,7 +1274,7 @@ fn collect_claude_session_versions(directory: &Path) -> Vec<String> {
 
 // ----------------------------- Search -----------------------------
 
-fn fold_char(character: char) -> char {
+pub(crate) fn fold_char(character: char) -> char {
     character.to_lowercase().next().unwrap_or(character)
 }
 
@@ -1112,7 +1326,7 @@ pub fn search(
     results
 }
 
-fn find_all(haystack: &[char], needle: &[char]) -> Vec<usize> {
+pub(crate) fn find_all(haystack: &[char], needle: &[char]) -> Vec<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return Vec::new();
     }
@@ -1129,7 +1343,7 @@ fn find_all(haystack: &[char], needle: &[char]) -> Vec<usize> {
     matches
 }
 
-fn merge_ranges(mut ranges: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
+pub(crate) fn merge_ranges(mut ranges: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
     ranges.sort();
     let mut merged: Vec<[usize; 2]> = Vec::new();
     for range in ranges {
@@ -1177,6 +1391,7 @@ mod tests {
             timestamp: 0,
             origin: PromptOrigin::History,
             session_id: None,
+            has_conversation: false,
             git_branch: None,
             is_command: false,
             pasted_count: 0,
@@ -1216,6 +1431,168 @@ mod tests {
         let results = search(&prompts, "foo bar", None, true, AgentFilter::Codex);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry.agent, Agent::Codex);
+    }
+
+    fn conv_with_usage(
+        session_id: &str,
+        path: &str,
+        started_at: i64,
+        is_subagent: bool,
+        keys: &[&str],
+    ) -> ConvFileResult {
+        ConvFileResult {
+            agent: Agent::Claude,
+            path: PathBuf::from(path),
+            session_id: session_id.to_string(),
+            project: Some("/synthetic/project".to_string()),
+            git_branch: None,
+            version: None,
+            source: Some("cli".to_string()),
+            models: vec!["claude-sonnet-4-5".to_string()],
+            is_subagent,
+            started_at,
+            ended_at: started_at + 1_000,
+            message_count: keys.len(),
+            first_prompt: String::new(),
+            user_prompts: Vec::new(),
+            usage_entries: keys
+                .iter()
+                .map(|key| UsageEntry {
+                    agent: Agent::Claude,
+                    dedup_key: (*key).to_string(),
+                    model: "claude-sonnet-4-5".to_string(),
+                    timestamp: started_at,
+                    project: "/synthetic/project".to_string(),
+                    usage: NormalizedUsage {
+                        uncached_input: 100,
+                        cache_read: 50,
+                        cache_creation: 10,
+                        output: 20,
+                        reasoning_output: 0,
+                    },
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn session_usage_counts_copied_events_once_and_rolls_subagents_into_parent() {
+        let original = conv_with_usage(
+            "orig",
+            "/synthetic/projects/p/orig.jsonl",
+            100,
+            false,
+            &["k1", "k2"],
+        );
+        let resumed = conv_with_usage(
+            "resumed",
+            "/synthetic/projects/p/resumed.jsonl",
+            200,
+            false,
+            &["k1", "k2", "k3"],
+        );
+        let subagent = conv_with_usage(
+            "agent-1",
+            "/synthetic/projects/p/orig/subagents/agent-1.jsonl",
+            150,
+            true,
+            &["k4"],
+        );
+        let conv = vec![resumed, subagent, original];
+        let usage = attribute_session_usage(&conv);
+
+        let orig = &usage[&(Agent::Claude, "orig".to_string())];
+        assert_eq!(orig.assistant_messages, 3, "k1, k2 and the sub-agent's k4");
+        assert_eq!(orig.total_tokens_including_cache, 3 * 180);
+        assert!(orig.est_cost_usd > 0.0);
+        assert_eq!(orig.unknown_model_tokens, 0);
+        let resumed = &usage[&(Agent::Claude, "resumed".to_string())];
+        assert_eq!(resumed.assistant_messages, 1, "only the new k3 call");
+        assert!(!usage.contains_key(&(Agent::Claude, "agent-1".to_string())));
+
+        let global = compute_usage(&collect_unique_events(&conv), AgentFilter::All, None);
+        let session_sum: u64 = usage
+            .values()
+            .map(|entry| entry.total_tokens_including_cache)
+            .sum();
+        assert_eq!(session_sum, global.total_tokens_including_cache);
+        assert_eq!(
+            usage
+                .values()
+                .map(|entry| entry.assistant_messages)
+                .sum::<usize>(),
+            global.assistant_messages
+        );
+    }
+
+    #[test]
+    fn range_statistics_only_count_records_inside_the_window() {
+        let mut early = prompt(Agent::Claude, "early");
+        early.timestamp = 1_000;
+        early.project = "/synthetic/early".to_string();
+        let mut late = prompt(Agent::Codex, "late");
+        late.timestamp = 5_000;
+        late.project = "/synthetic/late".to_string();
+        let prompts = vec![early, late];
+        let events = collect_unique_events(&[
+            conv_with_usage(
+                "s1",
+                "/synthetic/projects/p/s1.jsonl",
+                1_000,
+                false,
+                &["k1"],
+            ),
+            conv_with_usage(
+                "s2",
+                "/synthetic/projects/p/s2.jsonl",
+                5_000,
+                false,
+                &["k2"],
+            ),
+        ]);
+
+        let all = compute_stats(&prompts, &[], &events, AgentFilter::All, &[], None);
+        assert_eq!(all.total_prompts, 2);
+        assert_eq!(all.total_projects, 2);
+        assert_eq!(all.usage.assistant_messages, 2);
+
+        let window = compute_stats(
+            &prompts,
+            &[],
+            &events,
+            AgentFilter::All,
+            &[],
+            Some((4_000, 6_000)),
+        );
+        assert_eq!(window.total_prompts, 1);
+        assert_eq!(window.total_projects, 1);
+        assert_eq!(window.first_use, 5_000);
+        assert_eq!(window.usage.assistant_messages, 1);
+        assert_eq!(window.usage.total_tokens_including_cache, 180);
+
+        let empty = compute_stats(
+            &prompts,
+            &[],
+            &events,
+            AgentFilter::All,
+            &[],
+            Some((10_000, 20_000)),
+        );
+        assert_eq!(empty.total_prompts, 0);
+        assert_eq!(empty.first_use, 0);
+        assert!(empty.usage.by_day.is_empty());
+    }
+
+    #[test]
+    fn project_names_and_directory_encoding_cover_windows_and_unicode() {
+        assert_eq!(project_name("/Users/me/proj/"), "proj");
+        assert_eq!(project_name("C:\\Users\\me\\proj"), "proj");
+        assert_eq!(project_name("/"), "/");
+        assert_eq!(
+            encode_claude_project_dir("/Users/you/Desktop/我的项目/claude-code"),
+            "-Users-you-Desktop------claude-code"
+        );
+        assert_eq!(encode_claude_project_dir("C:\\work"), "C--work");
     }
 
     #[test]

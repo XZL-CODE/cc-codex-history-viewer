@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   Folder,
   FolderOpen,
   GitBranch,
   MessageSquare,
+  Search,
   Terminal,
 } from "lucide-react";
 import { useConversation } from "@/hooks/queries";
@@ -20,105 +23,47 @@ import {
   Skeleton,
   Spinner,
 } from "@/components/ui";
-import type {
-  Agent,
-  ChatMessage,
-  ContentBlock,
-  ConversationExportResult,
-} from "@/lib/types";
+import type { Agent, ChatMessage, ConversationExportResult } from "@/lib/types";
 import {
   absoluteTime,
   cn,
   encodePath,
+  formatDuration,
   formatNumber,
+  formatTokens,
+  formatUsageCost,
+  isMac,
+  pathBasename,
   prettyPath,
 } from "@/lib/utils";
 import { api, errMessage } from "@/lib/api";
+import { buildTokenRegex } from "@/lib/textMatch";
 import { AgentBadge } from "@/components/AgentBadge";
+import {
+  CollapseContext,
+  type CollapseSignal,
+} from "@/components/conversation/Collapsible";
+import { FindBar } from "@/components/conversation/FindBar";
+import {
+  MessageBubble,
+  type RenderMode,
+} from "@/components/conversation/MessageBubble";
+import { buildOutline, Outline } from "@/components/conversation/Outline";
 
-function BlockView({ block }: { block: ContentBlock }) {
-  const t = useT();
-  if (block.kind === "text") {
-    return (
-      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-        {block.text}
-      </div>
-    );
+const BATCH_SIZE = 60;
+const RENDER_MODE_KEY = "cchv-md-render";
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
+function readRenderMode(): RenderMode {
+  try {
+    return localStorage.getItem(RENDER_MODE_KEY) === "raw" ? "raw" : "rendered";
+  } catch {
+    return "rendered";
   }
-  if (block.kind === "image") {
-    return (
-      <div className="text-xs text-muted">
-        🖼 {block.text ?? t("imageFallback")}
-      </div>
-    );
-  }
-
-  const summary =
-    block.kind === "tool_use"
-      ? t("toolUseLabel", { name: block.toolName ?? "tool" })
-      : block.kind === "thinking"
-        ? t("thinkingLabel")
-        : block.kind === "tool_result"
-          ? t("toolResultLabel")
-          : block.kind;
-  const body =
-    block.kind === "tool_use"
-      ? JSON.stringify(block.toolInput ?? {}, null, 2)
-      : block.text ?? "";
-
-  return (
-    <details className="rounded-lg border border-border bg-background">
-      <summary className="cursor-pointer select-none px-3 py-1.5 text-xs font-medium text-muted">
-        {summary}
-      </summary>
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 pb-2.5 text-[11px] leading-relaxed text-muted">
-        {body}
-      </pre>
-    </details>
-  );
 }
 
-function MessageBubble({
-  msg,
-  highlighted = false,
-}: {
-  msg: ChatMessage;
-  highlighted?: boolean;
-}) {
-  const t = useT();
-  const isUser = msg.role === "user";
-  // system = 斜杠命令的调用标记（如 /btw）；侧问命令的回复 CC 不持久化
-  const isSystem = msg.role === "system";
-  return (
-    <div
-      className={cn(
-        "rounded-lg border border-border bg-surface p-4 transition-shadow duration-500",
-        isSystem && "border-dashed bg-surface/60",
-        highlighted && "ring-2 ring-accent shadow-lg"
-      )}
-    >
-      <div className="mb-2.5 flex items-center gap-2">
-        <AgentBadge agent={msg.agent} />
-        {(isUser || isSystem) && (
-          <Badge tone={isUser ? "accent" : "warning"}>
-            {isUser ? t("roleUser") : t("commandBadge")}
-          </Badge>
-        )}
-        {msg.isSidechain && <Badge tone="muted">{t("sidechainBadge")}</Badge>}
-        <span className="text-[11px] text-muted">
-          {absoluteTime(msg.timestamp)}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {msg.blocks.map((b, i) => (
-          <BlockView key={i} block={b} />
-        ))}
-      </div>
-      {isSystem && msg.agent === "claude" && (
-        <p className="mt-2 text-[11px] text-muted">{t("commandReplyNote")}</p>
-      )}
-    </div>
-  );
+function sameElements(a: HTMLElement[], b: HTMLElement[]): boolean {
+  return a.length === b.length && a.every((element, index) => element === b[index]);
 }
 
 export function ConversationDetail() {
@@ -132,34 +77,208 @@ export function ConversationDetail() {
   );
   const { copied, copy } = useCopy();
 
-  // 从搜索结果跳转携带 ?t=<时间戳>：定位到时间最接近的消息并短暂高亮
+  // 从搜索结果跳转：?m=<消息 uuid> 优先，其次 ?t=<时间戳>；?q= 预填查找关键词
   const [searchParams] = useSearchParams();
   const targetTs = Number(searchParams.get("t")) || null;
-  const [highlightIdx, setHighlightIdx] = useState<number | null>(null);
+  const targetUuid = searchParams.get("m");
+  const initialFind = searchParams.get("q") ?? "";
 
+  const messages = data?.messages ?? EMPTY_MESSAGES;
+
+  // ---- 渲染方式：助手回复按 Markdown 渲染或显示原文 ----
+  const [renderMode, setRenderMode] = useState<RenderMode>(readRenderMode);
+  const chooseRenderMode = (mode: RenderMode) => {
+    setRenderMode(mode);
+    try {
+      localStorage.setItem(RENDER_MODE_KEY, mode);
+    } catch {
+      /* 忽略持久化失败 */
+    }
+  };
+
+  // ---- 全部展开 / 折叠 ----
+  const [collapse, setCollapse] = useState<CollapseSignal>({
+    forced: null,
+    version: 0,
+  });
+  const expandAll = () =>
+    setCollapse((signal) => ({ forced: "open", version: signal.version + 1 }));
+  const collapseAll = () =>
+    setCollapse((signal) => ({ forced: "closed", version: signal.version + 1 }));
+
+  // ---- 分批渲染 ----
+  const [visible, setVisible] = useState(BATCH_SIZE);
   useEffect(() => {
-    if (!data || !targetTs || data.messages.length === 0) return;
-    let best = 0;
-    let bestDiff = Number.POSITIVE_INFINITY;
-    data.messages.forEach((m, i) => {
-      const diff = Math.abs(m.timestamp - targetTs);
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        best = i;
+    setVisible(BATCH_SIZE);
+  }, [data]);
+  const ensureVisible = useCallback((index: number) => {
+    setVisible((value) => Math.max(value, index + BATCH_SIZE));
+  }, []);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible((value) => value + BATCH_SIZE);
+        }
+      },
+      { rootMargin: "600px 0px" }
+    );
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+
+  // ---- 会话内查找 ----
+  const [findOpen, setFindOpen] = useState(initialFind.length > 0);
+  const [findQuery, setFindQuery] = useState(initialFind);
+  const [findFocus, setFindFocus] = useState(0);
+  const regex = useMemo(
+    () => (findOpen ? buildTokenRegex(findQuery.split(/\s+/)) : null),
+    [findOpen, findQuery]
+  );
+  // 查找时渲染全部消息，这样命中才能被定位
+  useEffect(() => {
+    if (regex && messages.length > 0) setVisible(messages.length);
+  }, [regex, messages.length]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [hits, setHits] = useState<HTMLElement[]>([]);
+  const [activeHit, setActiveHit] = useState(0);
+  useEffect(() => {
+    setActiveHit(0);
+  }, [regex]);
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container || !regex) {
+      setHits([]);
+      return;
+    }
+    let frame = 0;
+    const collect = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const next = Array.from(
+          container.querySelectorAll<HTMLElement>("mark.find-hit")
+        );
+        setHits((current) => (sameElements(current, next) ? current : next));
+      });
+    };
+    collect();
+    const observer = new MutationObserver(collect);
+    observer.observe(container, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [regex, data, renderMode]);
+  useEffect(() => {
+    hits.forEach((element, index) =>
+      element.classList.toggle("find-hit-active", index === activeHit)
+    );
+    hits[activeHit]?.scrollIntoView({ block: "center" });
+  }, [hits, activeHit]);
+  const nextHit = () => {
+    if (hits.length > 0) setActiveHit((index) => (index + 1) % hits.length);
+  };
+  const prevHit = () => {
+    if (hits.length > 0) {
+      setActiveHit((index) => (index - 1 + hits.length) % hits.length);
+    }
+  };
+  const openFind = useCallback(() => {
+    setFindOpen(true);
+    setFindFocus((token) => token + 1);
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = isMac ? event.metaKey : event.ctrlKey;
+      if (mod && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        openFind();
       }
-    });
-    setHighlightIdx(best);
-    // 等列表渲染完成后再滚动
-    requestAnimationFrame(() => {
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openFind]);
+
+  // ---- 定位目标消息（URL 参数或大纲点击）----
+  const [jump, setJump] = useState<{ index: number; nonce: number } | null>(
+    null
+  );
+  const handledJump = useRef<number | null>(null);
+  const [highlightIdx, setHighlightIdx] = useState<number | null>(null);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    let index: number | null = null;
+    if (targetUuid) {
+      const found = messages.findIndex((message) => message.uuid === targetUuid);
+      if (found >= 0) index = found;
+    }
+    if (index === null && targetTs) {
+      let bestDiff = Number.POSITIVE_INFINITY;
+      messages.forEach((message, position) => {
+        const diff = Math.abs(message.timestamp - targetTs);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          index = position;
+        }
+      });
+    }
+    if (index !== null) setJump({ index, nonce: Date.now() });
+  }, [messages, targetTs, targetUuid]);
+  useEffect(() => {
+    if (jump) ensureVisible(jump.index);
+  }, [jump, ensureVisible]);
+  useEffect(() => {
+    if (!jump || handledJump.current === jump.nonce || visible <= jump.index) return;
+    handledJump.current = jump.nonce;
+    const frame = requestAnimationFrame(() => {
       document
-        .getElementById(`msg-${best}`)
+        .getElementById(`msg-${jump.index}`)
         ?.scrollIntoView({ block: "center" });
     });
-    const timer = setTimeout(() => setHighlightIdx(null), 2500);
-    return () => clearTimeout(timer);
-  }, [data, targetTs]);
+    setHighlightIdx(jump.index);
+    const timer = window.setTimeout(() => setHighlightIdx(null), 2500);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [jump, visible]);
+  const jumpTo = useCallback(
+    (index: number) => setJump({ index, nonce: Date.now() }),
+    []
+  );
 
-  // 导出 Markdown
+  const outline = useMemo(() => buildOutline(messages), [messages]);
+
+  // 大纲跟随滚动：视口内最靠上的用户轮次为当前轮次；没有用户轮次在视口内时沿用上一个
+  const [activeTurn, setActiveTurn] = useState<number | null>(null);
+  useEffect(() => {
+    if (outline.length === 0) return;
+    const elements = outline
+      .filter((turn) => turn.index < visible)
+      .map((turn) => document.getElementById(`msg-${turn.index}`))
+      .filter((element): element is HTMLElement => element !== null);
+    if (elements.length === 0) return;
+    const inView = new Set<number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const index = Number(entry.target.id.replace("msg-", ""));
+          if (entry.isIntersecting) inView.add(index);
+          else inView.delete(index);
+        }
+        if (inView.size > 0) setActiveTurn(Math.min(...inView));
+      },
+      { rootMargin: "-10% 0px -60% 0px" }
+    );
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [outline, visible]);
+
+  // ---- 导出 Markdown ----
   const [exportOpen, setExportOpen] = useState(false);
   const [includeTools, setIncludeTools] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -205,19 +324,19 @@ export function ConversationDetail() {
 
   // 在终端中恢复该会话的命令
   const resumeCommand = data
-    ? data.project
-      ? `cd "${data.project}" && ${
-          data.agent === "codex"
-            ? `codex resume ${data.sessionId}`
-            : `claude --resume ${data.sessionId}`
-        }`
-      : data.agent === "codex"
-        ? `codex resume ${data.sessionId}`
-        : `claude --resume ${data.sessionId}`
+    ? [
+        data.project ? `cd "${data.project}" && ` : "",
+        data.agent === "codex"
+          ? `codex resume ${data.sessionId}`
+          : `claude --resume ${data.sessionId}`,
+      ].join("")
     : "";
 
+  const shown = Math.min(visible, messages.length);
+  const modKey = isMac ? "⌘" : "Ctrl+";
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
       <Button
         variant="ghost"
         size="sm"
@@ -242,7 +361,7 @@ export function ConversationDetail() {
         />
       ) : data ? (
         <>
-          <div className="mb-5">
+          <div className="mb-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-lg font-semibold text-foreground">
                 {t("conversationDetailTitle")}
@@ -311,7 +430,7 @@ export function ConversationDetail() {
                     title={exportResult.path ?? undefined}
                   >
                     {exportResult.path
-                      ? exportResult.path.split("/").pop()
+                      ? pathBasename(exportResult.path)
                       : t("notWrittenToFile")}
                   </span>
                 </span>
@@ -326,6 +445,7 @@ export function ConversationDetail() {
                 )}
               </div>
             )}
+
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-muted">
               <AgentBadge agent={data.agent} />
               {data.project && (
@@ -364,25 +484,140 @@ export function ConversationDetail() {
                 {absoluteTime(data.startedAt)} ~ {absoluteTime(data.endedAt)}
               </span>
               <span>
-                · {t("messagesCount", { count: formatNumber(data.messages.length) })}
+                · {t("messagesCount", { count: formatNumber(messages.length) })}
               </span>
+              {data.endedAt > data.startedAt && (
+                <span>
+                  ·{" "}
+                  {t("conversationDuration", {
+                    duration: formatDuration(data.endedAt - data.startedAt),
+                  })}
+                </span>
+              )}
+              {data.usage.totalTokensIncludingCache > 0 && (
+                <span
+                  title={t("tokenTotalSuffix", {
+                    value: formatNumber(data.usage.totalTokensIncludingCache),
+                  })}
+                >
+                  ·{" "}
+                  {t("conversationUsage", {
+                    tokens: formatTokens(data.usage.totalTokensIncludingCache),
+                    cost: formatUsageCost(data.usage),
+                    messages: formatNumber(data.usage.assistantMessages),
+                  })}
+                </span>
+              )}
             </div>
           </div>
 
-          {data.messages.length === 0 ? (
-            <CenterMessage
-              icon={<MessageSquare size={28} />}
-              title={t("noMessagesInSession")}
-            />
-          ) : (
-            <div className="space-y-3">
-              {data.messages.map((m, i) => (
-                <div key={m.uuid || i} id={`msg-${i}`}>
-                  <MessageBubble msg={m} highlighted={highlightIdx === i} />
-                </div>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div
+              className="flex items-center rounded-lg border border-border bg-surface p-0.5"
+              role="group"
+              aria-label={t("renderModeTitle")}
+              title={t("renderModeTitle")}
+            >
+              {(["rendered", "raw"] as RenderMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={renderMode === mode}
+                  onClick={() => chooseRenderMode(mode)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    renderMode === mode
+                      ? "bg-accent text-accent-fg"
+                      : "text-muted hover:text-foreground"
+                  )}
+                >
+                  {mode === "rendered" ? t("renderMarkdown") : t("renderRaw")}
+                </button>
               ))}
             </div>
-          )}
+            <Button variant="outline" size="sm" onClick={expandAll}>
+              <ChevronsUpDown size={13} />
+              {t("expandAll")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={collapseAll}>
+              <ChevronsDownUp size={13} />
+              {t("collapseAll")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={openFind}>
+              <Search size={13} />
+              {t("findButton")}
+              <kbd className="rounded border border-border bg-background px-1 font-sans text-[10px] text-muted">
+                {modKey}F
+              </kbd>
+            </Button>
+          </div>
+
+          <div className="grid gap-5 min-[1200px]:grid-cols-[minmax(0,1fr)_224px] min-[1200px]:items-start">
+            <div className="min-w-0">
+              {findOpen && (
+                <FindBar
+                  query={findQuery}
+                  onQueryChange={setFindQuery}
+                  current={hits.length > 0 ? activeHit : 0}
+                  total={hits.length}
+                  onPrev={prevHit}
+                  onNext={nextHit}
+                  onClose={() => setFindOpen(false)}
+                  focusToken={findFocus}
+                />
+              )}
+              {messages.length === 0 ? (
+                <CenterMessage
+                  icon={<MessageSquare size={28} />}
+                  title={t("noMessagesInSession")}
+                />
+              ) : (
+                <CollapseContext.Provider value={collapse}>
+                  <div ref={listRef} className="space-y-3">
+                    {messages.slice(0, visible).map((message, index) => (
+                      <div
+                        key={message.uuid || index}
+                        id={`msg-${index}`}
+                        className="cv-auto"
+                      >
+                        <MessageBubble
+                          message={message}
+                          highlighted={highlightIdx === index}
+                          renderMode={renderMode}
+                          regex={regex}
+                        />
+                      </div>
+                    ))}
+                    {shown < messages.length && (
+                      <>
+                        <div ref={sentinelRef} aria-hidden className="h-px" />
+                        <div className="flex items-center justify-center gap-3 py-2 text-[11px] text-muted">
+                          <span>
+                            {t("loadedMessages", {
+                              shown: formatNumber(shown),
+                              total: formatNumber(messages.length),
+                            })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setVisible(messages.length)}
+                            className="font-medium text-accent hover:underline"
+                          >
+                            {t("showAllMessages")}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CollapseContext.Provider>
+              )}
+            </div>
+            <Outline
+              turns={outline}
+              activeIndex={highlightIdx ?? activeTurn}
+              onJump={jumpTo}
+            />
+          </div>
         </>
       ) : null}
     </div>

@@ -1,8 +1,9 @@
 // 基于 TanStack Query 的数据请求 hooks。
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Agent, AgentFilter, ExportGroupBy, SortMode } from "@/lib/types";
+import type { ResolvedRange } from "@/lib/statsRange";
 import { useDebounce } from "./useDebounce";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -15,11 +16,15 @@ export function useProjects(agentFilter: AgentFilter) {
   });
 }
 
-export function useStats(agentFilter: AgentFilter) {
+/** 统计；切换范围时保留上一份数据（降低透明度）而不是闪成骨架屏。 */
+export function useStats(agentFilter: AgentFilter, range?: ResolvedRange) {
+  const start = range?.start ?? null;
+  const end = range?.end ?? null;
   return useQuery({
-    queryKey: ["stats", agentFilter],
-    queryFn: () => api.getStats(agentFilter),
+    queryKey: ["stats", agentFilter, start, end],
+    queryFn: () => api.getStats(agentFilter, start, end),
     staleTime: FIVE_MIN,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -135,6 +140,23 @@ export function useExportPreview(params: {
     enabled,
     staleTime: 30 * 1000,
   });
+}
+
+/** 全文搜索会话内容。扫描较重，用更长的防抖，并且只在启用时执行。 */
+export function useConversationSearch(
+  query: string,
+  projectFilter: string | null,
+  agentFilter: AgentFilter,
+  enabled: boolean
+) {
+  const debounced = useDebounce(query.trim(), 600);
+  const result = useQuery({
+    queryKey: ["conversation-search", debounced, projectFilter, agentFilter],
+    queryFn: () => api.searchConversations(debounced, projectFilter, agentFilter),
+    enabled: enabled && debounced.length > 0,
+    staleTime: 60 * 1000,
+  });
+  return { ...result, debouncedQuery: debounced };
 }
 
 export function useSearch(
