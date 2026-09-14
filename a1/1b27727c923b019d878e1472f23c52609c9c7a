@@ -1,0 +1,19 @@
+.gitignore
+  s_ad19674744531f::t_54e121150e61f5 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a11b27727c923b019d878e1472f23c52609c9c7a",
+  "prompts": {},
+  "sessions": {
+    "s_ad19674744531f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1885dd6e-cf4c-47fc-9e5e-aa1813d56cb7",
+        "model": "qwen3.7-plus"
+      },
+      "human_author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
