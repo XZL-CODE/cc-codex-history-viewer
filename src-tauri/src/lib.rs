@@ -34,6 +34,7 @@ pub fn run() {
             commands::build_prompt_export,
             commands::export_search_results,
             commands::export_conversation,
+            commands::export_sessions,
             commands::reveal_path,
         ])
         .run(tauri::generate_context!())

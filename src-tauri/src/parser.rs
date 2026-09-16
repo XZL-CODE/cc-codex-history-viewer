@@ -14,6 +14,13 @@ const MAX_LINE_FOR_PROMPT: usize = 2_000_000;
 /// 对话详情中单个内容块的最大字符数，超出则截断
 const MAX_BLOCK_CHARS: usize = 24_000;
 
+/// Per-block character limit for conversation detail. `Some(n)` clips each text block to
+/// `n` characters and marks it `truncated`; `None` keeps every block whole (used by export).
+pub type BlockLimit = Option<usize>;
+
+/// The limit the conversation view uses.
+pub const DISPLAY_BLOCK_LIMIT: BlockLimit = Some(MAX_BLOCK_CHARS);
+
 /// 解析过程中的中间 prompt 表示（参与文件级缓存序列化）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPrompt {
@@ -487,6 +494,14 @@ fn extract_usage_entry(
 
 /// 解析对话文件的完整内容（用于「对话详情」页面）。
 pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
+    parse_conversation_detail_with_limit(path, DISPLAY_BLOCK_LIMIT)
+}
+
+/// Parse a conversation with an explicit per-block limit; `None` keeps blocks whole (export).
+pub fn parse_conversation_detail_with_limit(
+    path: &Path,
+    block_limit: BlockLimit,
+) -> Option<ConversationDetail> {
     let reader = BufReader::new(File::open(path).ok()?);
     let session_id = path.file_stem()?.to_string_lossy().to_string();
     let file_is_subagent = is_subagent_path(path);
@@ -583,7 +598,7 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
             models.insert(model.clone());
         }
         let role = msg.role.clone().unwrap_or_else(|| ltype.to_string());
-        let blocks = content_to_blocks(msg.content.as_ref(), &mut tool_names);
+        let blocks = content_to_blocks(msg.content.as_ref(), &mut tool_names, block_limit);
         if blocks.is_empty() {
             continue;
         }
@@ -805,8 +820,21 @@ pub(crate) fn clip(s: &str, max_chars: usize) -> (String, bool) {
     }
 }
 
-fn clipped_block(kind: &str, text: &str, tool_name: Option<String>) -> ContentBlock {
-    let (text, truncated) = clip(text, MAX_BLOCK_CHARS);
+/// Clip to an optional limit; `None` never cuts.
+pub(crate) fn clip_to(s: &str, limit: BlockLimit) -> (String, bool) {
+    match limit {
+        Some(max_chars) => clip(s, max_chars),
+        None => (s.to_string(), false),
+    }
+}
+
+fn clipped_block(
+    kind: &str,
+    text: &str,
+    tool_name: Option<String>,
+    limit: BlockLimit,
+) -> ContentBlock {
+    let (text, truncated) = clip_to(text, limit);
     ContentBlock {
         kind: kind.to_string(),
         text: Some(text),
@@ -821,13 +849,14 @@ fn clipped_block(kind: &str, text: &str, tool_name: Option<String>) -> ContentBl
 fn content_to_blocks(
     content: Option<&serde_json::Value>,
     tool_names: &mut HashMap<String, String>,
+    limit: BlockLimit,
 ) -> Vec<ContentBlock> {
     let mut blocks = Vec::new();
     match content {
         Some(serde_json::Value::String(s)) => {
             let t = prettify_display_text(s.trim());
             if !t.is_empty() {
-                blocks.push(clipped_block("text", &t, None));
+                blocks.push(clipped_block("text", &t, None, limit));
             }
         }
         Some(serde_json::Value::Array(arr)) => {
@@ -840,12 +869,12 @@ fn content_to_blocks(
                             if t.is_empty() {
                                 continue;
                             }
-                            blocks.push(clipped_block("text", &t, None));
+                            blocks.push(clipped_block("text", &t, None, limit));
                         }
                     }
                     "thinking" => {
                         if let Some(t) = b.get("thinking").and_then(|v| v.as_str()) {
-                            blocks.push(clipped_block("thinking", t, None));
+                            blocks.push(clipped_block("thinking", t, None, limit));
                         }
                     }
                     "tool_use" => {
@@ -871,7 +900,7 @@ fn content_to_blocks(
                             .get("tool_use_id")
                             .and_then(|v| v.as_str())
                             .and_then(|id| tool_names.get(id).cloned());
-                        blocks.push(clipped_block("tool_result", &txt, tool_name));
+                        blocks.push(clipped_block("tool_result", &txt, tool_name, limit));
                     }
                     "image" => {
                         blocks.push(ContentBlock {
@@ -1077,5 +1106,96 @@ mod tests {
         // 带时区偏移：当地 08:00 即 UTC 0 点
         assert_eq!(iso_to_ms("1970-01-01T08:00:00+08:00"), Some(0));
         assert_eq!(iso_to_ms("not-a-date"), None);
+    }
+
+    // ---------- block limit ----------
+
+    fn write_temp_conversation(stem: &str, lines: &[serde_json::Value]) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("cc-history-parser-{}-{stem}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{stem}.jsonl"));
+        let body: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        std::fs::write(&path, body.join("\n")).unwrap();
+        path
+    }
+
+    #[test]
+    fn detail_block_limit_none_keeps_long_blocks_whole() {
+        let long_text = "字".repeat(MAX_BLOCK_CHARS + 500);
+        let long_result = "y".repeat(MAX_BLOCK_CHARS * 2);
+        let path = write_temp_conversation(
+            "block-limit",
+            &[
+                json!({
+                    "type": "user",
+                    "uuid": "u1",
+                    "timestamp": "2026-07-14T10:00:00.000Z",
+                    "cwd": "/synthetic/project",
+                    "message": {"role": "user", "content": "帮我看看"}
+                }),
+                json!({
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "timestamp": "2026-07-14T10:00:05.000Z",
+                    "cwd": "/synthetic/project",
+                    "message": {
+                        "role": "assistant",
+                        "model": "claude-synthetic",
+                        "content": [
+                            {"type": "text", "text": long_text},
+                            {"type": "tool_use", "id": "tool-1", "name": "Bash", "input": {"command": "ls"}}
+                        ]
+                    }
+                }),
+                json!({
+                    "type": "user",
+                    "uuid": "u2",
+                    "timestamp": "2026-07-14T10:00:06.000Z",
+                    "cwd": "/synthetic/project",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "tool-1", "content": long_result}]
+                    }
+                }),
+            ],
+        );
+
+        let display = parse_conversation_detail(&path).unwrap();
+        let export = parse_conversation_detail_with_limit(&path, None).unwrap();
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+        assert_eq!(display.messages.len(), 3);
+        assert_eq!(export.messages.len(), 3);
+
+        let display_text = &display.messages[1].blocks[0];
+        assert!(display_text.truncated);
+        assert_eq!(
+            display_text.text.as_deref().unwrap().chars().count(),
+            MAX_BLOCK_CHARS
+        );
+        let display_result = &display.messages[2].blocks[0];
+        assert!(display_result.truncated);
+        assert_eq!(
+            display_result.text.as_deref().unwrap().len(),
+            MAX_BLOCK_CHARS
+        );
+
+        let export_text = &export.messages[1].blocks[0];
+        assert!(!export_text.truncated);
+        assert_eq!(
+            export_text.text.as_deref().unwrap().chars().count(),
+            MAX_BLOCK_CHARS + 500
+        );
+        let export_result = &export.messages[2].blocks[0];
+        assert!(!export_result.truncated);
+        assert_eq!(
+            export_result.text.as_deref().unwrap().len(),
+            MAX_BLOCK_CHARS * 2
+        );
+        assert_eq!(export_result.tool_name.as_deref(), Some("Bash"));
+        // The tool_use block is never clipped on either path.
+        assert_eq!(export.messages[1].blocks[1].kind, "tool_use");
+        assert!(!display.messages[1].blocks[1].truncated);
     }
 }

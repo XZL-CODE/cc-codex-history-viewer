@@ -4,13 +4,13 @@ use crate::models::{
     Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, SessionUsage,
 };
 use crate::parser::{
-    clip, for_each_jsonl_line, stable_hash, ConvFileResult, RawPrompt, UsageEntry,
+    clip_to, for_each_jsonl_line, stable_hash, BlockLimit, ConvFileResult, RawPrompt, UsageEntry,
+    DISPLAY_BLOCK_LIMIT,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-const MAX_BLOCK_CHARS: usize = 24_000;
 const PROMPT_TRANSITION_DEDUP_WINDOW_MS: u64 = 5 * 60 * 1_000;
 
 #[derive(Clone, Debug, Default)]
@@ -38,6 +38,8 @@ struct PendingMessage {
 
 struct RolloutAccumulator {
     collect_detail: bool,
+    /// Per-block clip for detail messages; `None` keeps blocks whole (export).
+    block_limit: BlockLimit,
     file_stem: String,
     meta: Vec<SessionMeta>,
     matching_meta: Option<SessionMeta>,
@@ -63,10 +65,11 @@ struct RolloutAccumulator {
 }
 
 impl RolloutAccumulator {
-    fn new(path: &Path, collect_detail: bool) -> Option<Self> {
+    fn new(path: &Path, collect_detail: bool, block_limit: BlockLimit) -> Option<Self> {
         let file_stem = path.file_stem()?.to_string_lossy().to_string();
         Some(Self {
             collect_detail,
+            block_limit,
             file_stem,
             meta: Vec::new(),
             matching_meta: None,
@@ -219,7 +222,7 @@ impl RolloutAccumulator {
             prompt: raw_prompt(text.clone(), self.current_cwd.clone(), ts),
         });
         if self.collect_detail {
-            let mut blocks = vec![text_block(&text)];
+            let mut blocks = vec![text_block(&text, self.block_limit)];
             if has_images && text != "[Image]" {
                 blocks.push(image_block());
             }
@@ -251,7 +254,7 @@ impl RolloutAccumulator {
                         stable_message_id("event-assistant", timestamp, payload),
                         "assistant",
                         timestamp.unwrap_or(0),
-                        vec![text_block(&text)],
+                        vec![text_block(&text, self.block_limit)],
                     ),
                 },
             ));
@@ -376,7 +379,7 @@ impl RolloutAccumulator {
                             stable_message_id("legacy-user", timestamp, payload),
                             "user",
                             ts,
-                            vec![text_block(&text)],
+                            vec![text_block(&text, self.block_limit)],
                         ),
                     });
                 }
@@ -391,7 +394,7 @@ impl RolloutAccumulator {
                 self.response_assistant_texts
                     .insert(text_fingerprint(&raw_assistant_text));
                 if self.collect_detail {
-                    let blocks = response_message_blocks(payload.get("content"));
+                    let blocks = response_message_blocks(payload.get("content"), self.block_limit);
                     self.messages.push(PendingMessage {
                         line_no,
                         message: chat_message(
@@ -428,7 +431,7 @@ impl RolloutAccumulator {
                     stable_message_id("response-agent", timestamp, payload),
                     "assistant",
                     timestamp.unwrap_or(0),
-                    vec![text_block(&text)],
+                    vec![text_block(&text, self.block_limit)],
                 ),
             });
         }
@@ -448,7 +451,7 @@ impl RolloutAccumulator {
                 stable_message_id("reasoning", timestamp, payload),
                 "assistant",
                 timestamp.unwrap_or(0),
-                vec![clipped_block("thinking", &text, None)],
+                vec![clipped_block("thinking", &text, None, self.block_limit)],
             ),
         });
     }
@@ -498,7 +501,12 @@ impl RolloutAccumulator {
                         format!("{call_id}:output"),
                         "assistant",
                         timestamp.unwrap_or(0),
-                        vec![clipped_block("tool_result", &output, Some(name))],
+                        vec![clipped_block(
+                            "tool_result",
+                            &output,
+                            Some(name),
+                            self.block_limit,
+                        )],
                     ),
                 });
             }
@@ -522,6 +530,7 @@ impl RolloutAccumulator {
                     "tool_result",
                     &output,
                     self.tool_names.get(&call_id).cloned(),
+                    self.block_limit,
                 )],
             ),
         });
@@ -702,7 +711,7 @@ pub fn parse_history(path: &Path) -> Vec<RawPrompt> {
 
 /// Parse one Codex rollout into the file-level cache/index representation.
 pub fn parse_rollout_file(path: &Path) -> Option<ConvFileResult> {
-    let mut accumulator = RolloutAccumulator::new(path, false)?;
+    let mut accumulator = RolloutAccumulator::new(path, false, DISPLAY_BLOCK_LIMIT)?;
     for_each_jsonl_line(path, |line_no, line| {
         accumulator.process_line(line_no, line)
     })
@@ -710,9 +719,18 @@ pub fn parse_rollout_file(path: &Path) -> Option<ConvFileResult> {
     Some(accumulator.finish(path).0)
 }
 
-/// Parse one Codex rollout into a normalized conversation detail.
+/// Parse one Codex rollout into a normalized conversation detail for the viewer: every text
+/// block is clipped to the display limit.
 pub fn parse_rollout_detail(path: &Path) -> Option<ConversationDetail> {
-    let mut accumulator = RolloutAccumulator::new(path, true)?;
+    parse_rollout_detail_with_limit(path, DISPLAY_BLOCK_LIMIT)
+}
+
+/// Parse one Codex rollout with an explicit per-block limit; `None` keeps blocks whole (export).
+pub fn parse_rollout_detail_with_limit(
+    path: &Path,
+    block_limit: BlockLimit,
+) -> Option<ConversationDetail> {
+    let mut accumulator = RolloutAccumulator::new(path, true, block_limit)?;
     for_each_jsonl_line(path, |line_no, line| {
         accumulator.process_line(line_no, line)
     })
@@ -762,12 +780,17 @@ fn chat_message(
     }
 }
 
-fn text_block(text: &str) -> ContentBlock {
-    clipped_block("text", text, None)
+fn text_block(text: &str, limit: BlockLimit) -> ContentBlock {
+    clipped_block("text", text, None, limit)
 }
 
-fn clipped_block(kind: &str, text: &str, tool_name: Option<String>) -> ContentBlock {
-    let (text, truncated) = clip(text, MAX_BLOCK_CHARS);
+fn clipped_block(
+    kind: &str,
+    text: &str,
+    tool_name: Option<String>,
+    limit: BlockLimit,
+) -> ContentBlock {
+    let (text, truncated) = clip_to(text, limit);
     ContentBlock {
         kind: kind.to_string(),
         text: Some(text),
@@ -787,10 +810,10 @@ fn image_block() -> ContentBlock {
     }
 }
 
-fn response_message_blocks(content: Option<&Value>) -> Vec<ContentBlock> {
+fn response_message_blocks(content: Option<&Value>, limit: BlockLimit) -> Vec<ContentBlock> {
     match content {
         Some(Value::String(text)) if !text.trim().is_empty() => {
-            vec![text_block(text.trim())]
+            vec![text_block(text.trim(), limit)]
         }
         Some(Value::Array(items)) => items
             .iter()
@@ -799,7 +822,7 @@ fn response_message_blocks(content: Option<&Value>) -> Vec<ContentBlock> {
                 if !matches!(item_type, "output_text" | "text") {
                     return None;
                 }
-                nonempty_string(item.get("text")).map(|text| text_block(&text))
+                nonempty_string(item.get("text")).map(|text| text_block(&text, limit))
             })
             .collect(),
         _ => Vec::new(),
@@ -1331,5 +1354,78 @@ mod tests {
             original.usage_entries[0].dedup_key,
             distinct.usage_entries[0].dedup_key
         );
+    }
+
+    #[test]
+    fn detail_block_limit_none_keeps_long_blocks_whole() {
+        const ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        let display_limit = DISPLAY_BLOCK_LIMIT.unwrap();
+        let long_reply = "字".repeat(display_limit + 1_000);
+        let long_output = "y".repeat(display_limit * 2);
+        let file = TestFile::new(
+            &format!("rollout-2026-07-14T10-00-00-{ID}"),
+            &format!(
+                concat!(
+                    "{{\"timestamp\":\"2026-07-14T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/synthetic/long\",\"source\":\"cli\"}}}}\n",
+                    "{{\"timestamp\":\"2026-07-14T10:00:01Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"看看这个\"}}}}\n",
+                    "{{\"timestamp\":\"2026-07-14T10:00:02Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"function_call\",\"call_id\":\"call-long\",\"name\":\"shell\",\"arguments\":\"{{}}\"}}}}\n",
+                    "{{\"timestamp\":\"2026-07-14T10:00:03Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"function_call_output\",\"call_id\":\"call-long\",\"output\":\"{output}\"}}}}\n",
+                    "{{\"timestamp\":\"2026-07-14T10:00:04Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"{reply}\"}}]}}}}\n"
+                ),
+                id = ID,
+                output = long_output,
+                reply = long_reply
+            ),
+        );
+
+        let display = parse_rollout_detail(&file.0).unwrap();
+        let export = parse_rollout_detail_with_limit(&file.0, None).unwrap();
+        assert_eq!(display.messages.len(), export.messages.len());
+
+        let find = |detail: &ConversationDetail, kind: &str, marker: char| -> ContentBlock {
+            detail
+                .messages
+                .iter()
+                .flat_map(|message| message.blocks.iter())
+                .find(|block| {
+                    block.kind == kind
+                        && block
+                            .text
+                            .as_deref()
+                            .is_some_and(|text| text.starts_with(marker))
+                })
+                .cloned()
+                .expect("block present")
+        };
+
+        let display_result = find(&display, "tool_result", 'y');
+        assert!(display_result.truncated);
+        assert_eq!(display_result.text.as_deref().unwrap().len(), display_limit);
+        assert_eq!(display_result.tool_name.as_deref(), Some("shell"));
+        let export_result = find(&export, "tool_result", 'y');
+        assert!(!export_result.truncated);
+        assert_eq!(
+            export_result.text.as_deref().unwrap().len(),
+            display_limit * 2
+        );
+
+        let display_reply = find(&display, "text", '字');
+        assert!(display_reply.truncated);
+        assert_eq!(
+            display_reply.text.as_deref().unwrap().chars().count(),
+            display_limit
+        );
+        let export_reply = find(&export, "text", '字');
+        assert!(!export_reply.truncated);
+        assert_eq!(
+            export_reply.text.as_deref().unwrap().chars().count(),
+            display_limit + 1_000
+        );
+
+        // Short blocks are identical on both paths.
+        let display_prompt = find(&display, "text", '看');
+        let export_prompt = find(&export, "text", '看');
+        assert_eq!(display_prompt.text, export_prompt.text);
+        assert!(!display_prompt.truncated && !export_prompt.truncated);
     }
 }

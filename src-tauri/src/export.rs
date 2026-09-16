@@ -3,10 +3,10 @@
 //! 所有用户可见文案支持 zh / en（由 lang 参数控制，默认 zh）。
 
 use crate::models::{
-    Agent, AgentFilter, ContentBlock, ConversationDetail, PromptEntry, PromptOrigin,
+    Agent, AgentFilter, ContentBlock, ConversationDetail, PromptEntry, PromptOrigin, SessionUsage,
 };
 use chrono::{Datelike, Local, NaiveDate, TimeZone};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// 单条 prompt 正文超过此字符数仍原样保留（导出追求「完整」，不截断）。
 /// 仅用于在「预览」里限制返回给前端的长度。
@@ -397,12 +397,25 @@ pub fn build_conversation_markdown(
     lang: Lang,
 ) -> String {
     let mut md = String::new();
-
-    // 头部
     md.push_str(match lang {
         Lang::Zh => "# 对话导出\n\n",
         Lang::En => "# Conversation Export\n\n",
     });
+    push_conversation_meta(&mut md, detail, lang);
+    md.push_str("---\n\n");
+    push_conversation_body(&mut md, detail, include_tools, lang, "##");
+    md
+}
+
+fn agent_label(agent: Agent) -> &'static str {
+    match agent {
+        Agent::Claude => "Claude Code",
+        Agent::Codex => "OpenAI Codex",
+    }
+}
+
+/// 会话元信息引用块：项目、产品、分支、CLI 版本、时间、消息数、Token、成本、会话 ID。
+fn push_conversation_meta(md: &mut String, detail: &ConversationDetail, lang: Lang) {
     let label = |zh: &'static str, en: &'static str| match lang {
         Lang::Zh => zh,
         Lang::En => en,
@@ -417,10 +430,7 @@ pub fn build_conversation_markdown(
     md.push_str(&format!(
         "> **{}**　{}\n",
         label("产品", "Agent"),
-        match detail.agent {
-            Agent::Claude => "Claude Code",
-            Agent::Codex => "OpenAI Codex",
-        }
+        agent_label(detail.agent)
     ));
     if let Some(b) = detail.git_branch.as_deref().filter(|b| !b.is_empty()) {
         md.push_str(&format!("> **{}**　{}\n", label("分支", "Branch"), b));
@@ -443,27 +453,49 @@ pub fn build_conversation_markdown(
         label("消息数", "Messages"),
         detail.messages.len()
     ));
-    if detail.usage.total_tokens_including_cache > 0 {
-        md.push_str(&format!(
-            "> **{}**　{}\n",
-            label("Token（含缓存）", "Tokens (incl. cache)"),
-            detail.usage.total_tokens_including_cache
-        ));
-        if detail.usage.unknown_model_tokens < detail.usage.total_tokens_including_cache {
-            md.push_str(&format!(
-                "> **{}**　${:.2}\n",
-                label("API 等价估算成本", "API-equivalent estimated cost"),
-                detail.usage.est_cost_usd
-            ));
-        }
-    }
+    push_usage_lines(md, &detail.usage, lang);
     md.push_str(&format!(
-        "> **{}**　`{}`\n\n---\n\n",
+        "> **{}**　`{}`\n\n",
         label("会话 ID", "Session ID"),
         detail.session_id
     ));
+}
 
-    // 正文
+/// Token 与成本两行：没有用量时不输出；全部来自未知定价模型时不输出成本。
+fn push_usage_lines(md: &mut String, usage: &SessionUsage, lang: Lang) {
+    if usage.total_tokens_including_cache == 0 {
+        return;
+    }
+    let label = |zh: &'static str, en: &'static str| match lang {
+        Lang::Zh => zh,
+        Lang::En => en,
+    };
+    md.push_str(&format!(
+        "> **{}**　{}\n",
+        label("Token（含缓存）", "Tokens (incl. cache)"),
+        usage.total_tokens_including_cache
+    ));
+    if usage.unknown_model_tokens < usage.total_tokens_including_cache {
+        md.push_str(&format!(
+            "> **{}**　${:.2}\n",
+            label("API 等价估算成本", "API-equivalent estimated cost"),
+            usage.est_cost_usd
+        ));
+    }
+}
+
+/// 逐条渲染消息；`heading` 是消息标题的 Markdown 级别（单会话用 `##`，合并文件里降为 `###`）。
+fn push_conversation_body(
+    md: &mut String,
+    detail: &ConversationDetail,
+    include_tools: bool,
+    lang: Lang,
+    heading: &str,
+) {
+    let label = |zh: &'static str, en: &'static str| match lang {
+        Lang::Zh => zh,
+        Lang::En => en,
+    };
     for m in &detail.messages {
         let mut body = String::new();
         for b in &m.blocks {
@@ -476,8 +508,8 @@ pub fn build_conversation_markdown(
             label("🧑 用户", "🧑 User")
         } else {
             match detail.agent {
-                Agent::Claude => label("🤖 Claude", "🤖 Claude"),
-                Agent::Codex => label("🤖 Codex", "🤖 Codex"),
+                Agent::Claude => "🤖 Claude",
+                Agent::Codex => "🤖 Codex",
             }
         };
         let side = if m.is_sidechain {
@@ -486,14 +518,260 @@ pub fn build_conversation_markdown(
             ""
         };
         md.push_str(&format!(
-            "## {} · {}{}\n\n",
+            "{heading} {} · {}{}\n\n",
             who,
             fmt_time(m.timestamp, "%Y-%m-%d %H:%M"),
             side
         ));
         md.push_str(&body);
     }
+}
+
+// ----------------------------- 批量会话导出 -----------------------------
+
+/// 批量导出中的一个会话：完整详情，加上会话列表里展示的标题（首条 Prompt，可能为空）。
+pub struct SessionExportItem {
+    pub detail: ConversationDetail,
+    pub title: String,
+}
+
+/// 批量导出参数。`project` 只用于标题与元信息，可为空；`include_tools` 与单会话导出语义一致。
+pub struct SessionsExportParams<'a> {
+    pub project: &'a str,
+    pub include_tools: bool,
+    pub lang: Lang,
+}
+
+/// 多文件模式里的一个会话文件。
+pub struct SessionFile {
+    pub file_name: String,
+    pub markdown: String,
+}
+
+/// 多文件模式的产物：每个会话一份 Markdown，外加一份 index.md。
+pub struct SessionsFolder {
+    pub files: Vec<SessionFile>,
+    pub index_markdown: String,
+}
+
+/// 标题里最多保留的字符数。
+const TITLE_MAX_CHARS: usize = 60;
+/// 文件名里标题片段最多保留的字符数。
+const FILE_TITLE_MAX_CHARS: usize = 40;
+
+/// 两种模式共用的顺序：按开始时间升序，同一时刻按产品、会话 ID，保证输出确定。
+fn ordered(items: &[SessionExportItem]) -> Vec<&SessionExportItem> {
+    let mut list: Vec<&SessionExportItem> = items.iter().collect();
+    list.sort_by(|a, b| {
+        a.detail
+            .started_at
+            .cmp(&b.detail.started_at)
+            .then_with(|| a.detail.agent.cmp(&b.detail.agent))
+            .then_with(|| a.detail.session_id.cmp(&b.detail.session_id))
+    });
+    list
+}
+
+/// 合并模式：一份 Markdown，开头是目录表，随后每个会话一节（`##`），消息标题降为 `###`。
+pub fn build_sessions_merged(items: &[SessionExportItem], p: &SessionsExportParams) -> String {
+    let list = ordered(items);
+    let mut md = String::new();
+    push_batch_header(&mut md, &list, p);
+    push_batch_table(&mut md, &list, p.lang, None);
+    for (index, item) in list.iter().enumerate() {
+        md.push_str("---\n\n");
+        md.push_str(&format!(
+            "## {}. {}\n\n",
+            index + 1,
+            session_title(item, p.lang)
+        ));
+        push_conversation_meta(&mut md, &item.detail, p.lang);
+        push_conversation_body(&mut md, &item.detail, p.include_tools, p.lang, "###");
+    }
     md
+}
+
+/// 多文件模式：每个会话一份与单会话导出完全相同的 Markdown，index.md 汇总并链接到各文件。
+pub fn build_sessions_folder(
+    items: &[SessionExportItem],
+    p: &SessionsExportParams,
+) -> SessionsFolder {
+    let list = ordered(items);
+    let names = session_file_names(&list);
+    let files = list
+        .iter()
+        .zip(&names)
+        .map(|(item, name)| SessionFile {
+            file_name: name.clone(),
+            markdown: build_conversation_markdown(&item.detail, p.include_tools, p.lang),
+        })
+        .collect();
+    let mut index = String::new();
+    push_batch_header(&mut index, &list, p);
+    push_batch_table(&mut index, &list, p.lang, Some(&names));
+    SessionsFolder {
+        files,
+        index_markdown: index,
+    }
+}
+
+/// 批量导出的标题与汇总元信息：项目、导出时间、会话数、消息数、Token、成本、是否含执行过程。
+fn push_batch_header(md: &mut String, list: &[&SessionExportItem], p: &SessionsExportParams) {
+    let lang = p.lang;
+    let label = |zh: &'static str, en: &'static str| match lang {
+        Lang::Zh => zh,
+        Lang::En => en,
+    };
+    let project = p.project.trim();
+    let title = label("会话导出", "Sessions Export");
+    if project.is_empty() {
+        md.push_str(&format!("# {title}\n\n"));
+    } else {
+        md.push_str(&format!("# {title} · {}\n\n", project_name(project)));
+        md.push_str(&format!(
+            "> **{}**　`{}`\n",
+            label("项目", "Project"),
+            pretty_path(project)
+        ));
+    }
+    md.push_str(&format!(
+        "> **{}**　{}\n",
+        label("导出时间", "Exported at"),
+        now_label()
+    ));
+    md.push_str(&format!(
+        "> **{}**　{}\n",
+        label("会话数", "Sessions"),
+        list.len()
+    ));
+    let messages: usize = list.iter().map(|item| item.detail.messages.len()).sum();
+    md.push_str(&format!(
+        "> **{}**　{}\n",
+        label("消息数", "Messages"),
+        messages
+    ));
+    let mut total = SessionUsage::default();
+    for item in list {
+        let usage = &item.detail.usage;
+        total.total_tokens_including_cache = total
+            .total_tokens_including_cache
+            .saturating_add(usage.total_tokens_including_cache);
+        total.unknown_model_tokens = total
+            .unknown_model_tokens
+            .saturating_add(usage.unknown_model_tokens);
+        total.est_cost_usd += usage.est_cost_usd;
+    }
+    push_usage_lines(md, &total, lang);
+    md.push_str(&format!(
+        "> **{}**　{}\n\n",
+        label("执行过程", "Tool calls & thinking"),
+        if p.include_tools {
+            label("包含", "included")
+        } else {
+            label("不含", "omitted")
+        }
+    ));
+}
+
+/// 目录表；多文件模式额外带一列指向各会话文件的相对链接。
+fn push_batch_table(
+    md: &mut String,
+    list: &[&SessionExportItem],
+    lang: Lang,
+    files: Option<&[String]>,
+) {
+    let label = |zh: &'static str, en: &'static str| match lang {
+        Lang::Zh => zh,
+        Lang::En => en,
+    };
+    md.push_str(&format!("## {}\n\n", label("目录", "Contents")));
+    let mut header = vec![
+        "#",
+        label("时间", "Time"),
+        label("产品", "Agent"),
+        label("标题", "Title"),
+        label("消息数", "Messages"),
+        label("Token（含缓存）", "Tokens (incl. cache)"),
+    ];
+    if files.is_some() {
+        header.push(label("文件", "File"));
+    }
+    md.push_str(&format!("| {} |\n", header.join(" | ")));
+    md.push_str(&format!("|{}\n", "---|".repeat(header.len())));
+    for (index, item) in list.iter().enumerate() {
+        let detail = &item.detail;
+        let mut cells = vec![
+            (index + 1).to_string(),
+            fmt_time(detail.started_at, "%Y-%m-%d %H:%M"),
+            agent_label(detail.agent).to_string(),
+            table_cell(&session_title(item, lang)),
+            detail.messages.len().to_string(),
+            detail.usage.total_tokens_including_cache.to_string(),
+        ];
+        if let Some(files) = files {
+            let file = &files[index];
+            cells.push(format!("[{file}]({file})"));
+        }
+        md.push_str(&format!("| {} |\n", cells.join(" | ")));
+    }
+    md.push('\n');
+}
+
+/// 会话的原始标题：优先列表里的首条 Prompt，否则取第一条用户文本块；可能为空。
+fn title_text(item: &SessionExportItem) -> String {
+    if !item.title.trim().is_empty() {
+        return item.title.clone();
+    }
+    item.detail
+        .messages
+        .iter()
+        .filter(|m| m.role == "user")
+        .flat_map(|m| m.blocks.iter())
+        .find(|b| b.kind == "text")
+        .and_then(|b| b.text.clone())
+        .unwrap_or_default()
+}
+
+/// 展示用标题：首行、折叠空白、限长；没有任何用户文本时给占位文案。
+fn session_title(item: &SessionExportItem, lang: Lang) -> String {
+    let short = shorten_title(&title_text(item), TITLE_MAX_CHARS);
+    if short.is_empty() {
+        match lang {
+            Lang::Zh => "（无用户消息）".to_string(),
+            Lang::En => "(no user messages)".to_string(),
+        }
+    } else {
+        short
+    }
+}
+
+/// 每个会话的文件名：`产品_开始时间_短ID_标题片段.md`，同名时追加 `-2`、`-3`。
+fn session_file_names(list: &[&SessionExportItem]) -> Vec<String> {
+    let mut used: HashSet<String> = HashSet::new();
+    list.iter()
+        .map(|item| {
+            let detail = &item.detail;
+            let short_id: String = detail.session_id.chars().take(8).collect();
+            let mut base = format!(
+                "{}_{}_{}",
+                detail.agent.as_str(),
+                fmt_time(detail.started_at, "%Y-%m-%d_%H%M"),
+                short_id
+            );
+            let slug = filename_fragment(&title_text(item), FILE_TITLE_MAX_CHARS);
+            if !slug.is_empty() {
+                base.push('_');
+                base.push_str(&slug);
+            }
+            let mut name = format!("{base}.md");
+            let mut n = 2;
+            while !used.insert(name.clone()) {
+                name = format!("{base}-{n}.md");
+                n += 1;
+            }
+            name
+        })
+        .collect()
 }
 
 /// 渲染单个内容块；不可见（未勾选工具）时不输出任何内容。
@@ -507,6 +785,7 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
             if let Some(t) = b.text.as_deref().filter(|t| !t.trim().is_empty()) {
                 md.push_str(t.trim());
                 md.push_str("\n\n");
+                push_truncated_note(md, b, lang);
             }
         }
         "image" => {
@@ -525,6 +804,7 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
                 }
                 md.push('\n');
             }
+            push_truncated_note(md, b, lang);
         }
         "tool_use" if include_tools => {
             md.push_str(&format!(
@@ -544,8 +824,20 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
             md.push_str(&format!("**{}**\n\n", label("↩ 工具结果", "↩ Tool result")));
             let t = b.text.as_deref().unwrap_or("");
             md.push_str(&format!("````\n{}\n````\n\n", t.trim()));
+            push_truncated_note(md, b, lang);
         }
         _ => {}
+    }
+}
+
+/// 解析层按展示上限截断过的块要在导出里明确标出，而不是默默当作完整内容。
+/// 导出 command 走不截断的解析路径时不会触发；只有直接导出展示用数据时才会出现。
+fn push_truncated_note(md: &mut String, b: &ContentBlock, lang: Lang) {
+    if b.truncated {
+        md.push_str(match lang {
+            Lang::Zh => "_（内容过长，已截断）_\n\n",
+            Lang::En => "_(content truncated)_\n\n",
+        });
     }
 }
 
@@ -581,6 +873,49 @@ fn pretty_path(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+/// 取首个非空行并折叠空白；超过 max_chars 时截断并加省略号。
+fn shorten_title(raw: &str, max_chars: usize) -> String {
+    let line = raw
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    let collapsed = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= max_chars {
+        return collapsed;
+    }
+    let head: String = collapsed
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect();
+    format!("{}…", head.trim_end())
+}
+
+/// GFM 表格单元格：竖线转义，换行折成空格。
+fn table_cell(s: &str) -> String {
+    s.replace('|', "\\|").replace(['\n', '\r'], " ")
+}
+
+/// 把任意文本压成安全的文件名片段：保留字母数字（含 CJK），其余折叠成单个 `-`，
+/// 去掉首尾 `-`，最长 max_chars；可能为空。
+pub fn filename_fragment(text: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    let mut pending_dash = false;
+    for c in text.chars() {
+        if c.is_alphanumeric() {
+            if pending_dash && !out.is_empty() {
+                out.push('-');
+            }
+            pending_dash = false;
+            out.push(c);
+        } else {
+            pending_dash = true;
+        }
+    }
+    let head: String = out.chars().take(max_chars).collect();
+    head.trim_matches('-').to_string()
 }
 
 #[cfg(test)]
@@ -831,5 +1166,214 @@ mod tests {
         assert!(codex.contains("> **Agent**　OpenAI Codex"));
         assert!(codex.contains("## 🤖 Codex"));
         assert!(codex.contains("Tool call · Bash"));
+    }
+
+    // ---------- 批量会话导出 ----------
+
+    fn sample_detail(
+        agent: Agent,
+        session_id: &str,
+        started_at: i64,
+        prompt: &str,
+        reply: &str,
+    ) -> ConversationDetail {
+        ConversationDetail {
+            agent,
+            session_id: session_id.into(),
+            project: "/p/alpha".into(),
+            git_branch: None,
+            started_at,
+            ended_at: started_at + 60_000,
+            cli_version: None,
+            source: None,
+            models: vec![],
+            messages: vec![
+                ChatMessage {
+                    agent,
+                    uuid: format!("{session_id}-u"),
+                    role: "user".into(),
+                    timestamp: started_at,
+                    is_sidechain: false,
+                    blocks: vec![text_block(prompt)],
+                },
+                ChatMessage {
+                    agent,
+                    uuid: format!("{session_id}-a"),
+                    role: "assistant".into(),
+                    timestamp: started_at + 1_000,
+                    is_sidechain: false,
+                    blocks: vec![
+                        ContentBlock {
+                            kind: "tool_use".into(),
+                            text: None,
+                            tool_name: Some("Bash".into()),
+                            tool_input: Some(serde_json::json!({"command": "ls"})),
+                            truncated: false,
+                        },
+                        text_block(reply),
+                    ],
+                },
+            ],
+            usage: crate::models::SessionUsage {
+                total_tokens_including_cache: 1_000,
+                est_cost_usd: 0.5,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn merged_export_orders_sessions_chronologically_and_demotes_headings() {
+        let day = day_start_ms("2026-05-16").unwrap();
+        let items = vec![
+            SessionExportItem {
+                detail: sample_detail(
+                    Agent::Codex,
+                    "codex-later",
+                    day + 3_600_000,
+                    "第二个|问题",
+                    "好的",
+                ),
+                title: "第二个|问题".into(),
+            },
+            SessionExportItem {
+                detail: sample_detail(Agent::Claude, "claude-first", day, "第一个问题", "收到"),
+                title: String::new(),
+            },
+        ];
+        let params = SessionsExportParams {
+            project: "/p/alpha",
+            include_tools: false,
+            lang: Lang::Zh,
+        };
+        let md = build_sessions_merged(&items, &params);
+
+        assert!(md.starts_with("# 会话导出 · alpha\n\n> **项目**　`/p/alpha`\n"));
+        assert!(md.contains("> **会话数**　2\n"));
+        assert!(md.contains("> **消息数**　4\n"));
+        assert!(md.contains("> **Token（含缓存）**　2000\n"));
+        assert!(md.contains("> **API 等价估算成本**　$1.00\n"));
+        assert!(md.contains("> **执行过程**　不含\n"));
+        assert!(md.contains("## 目录\n"));
+        // 空标题回退到首条用户文本；竖线在表格里转义，在章节标题里原样
+        assert!(md.contains("| Claude Code | 第一个问题 | 2 | 1000 |"));
+        assert!(md.contains("| OpenAI Codex | 第二个\\|问题 | 2 | 1000 |"));
+        let first = md.find("## 1. 第一个问题\n").unwrap();
+        let second = md.find("## 2. 第二个|问题\n").unwrap();
+        assert!(first < second, "章节按开始时间排序，而不是传入顺序");
+        assert!(md.contains("> **会话 ID**　`claude-first`"));
+        // 消息标题降为三级；未勾选工具时工具块不出现
+        assert_eq!(md.matches("\n### 🧑 用户 · ").count(), 2);
+        assert_eq!(md.matches("\n### 🤖 Claude · ").count(), 1);
+        assert_eq!(md.matches("\n### 🤖 Codex · ").count(), 1);
+        assert!(!md.contains("\n## 🧑"));
+        assert!(!md.contains("工具调用"));
+
+        let with_tools = build_sessions_merged(
+            &items,
+            &SessionsExportParams {
+                include_tools: true,
+                ..params
+            },
+        );
+        assert!(with_tools.contains("> **执行过程**　包含\n"));
+        assert_eq!(with_tools.matches("**🔧 工具调用 · Bash**").count(), 2);
+    }
+
+    #[test]
+    fn folder_export_names_files_uniquely_and_links_them_from_index() {
+        let day = day_start_ms("2026-05-16").unwrap();
+        let items = vec![
+            SessionExportItem {
+                detail: sample_detail(Agent::Claude, "abcdef12-0000", day, "修一下 bug", "好"),
+                title: "修一下 bug".into(),
+            },
+            SessionExportItem {
+                detail: sample_detail(Agent::Claude, "abcdef12-1111", day, "修一下 bug", "好"),
+                title: "修一下 bug".into(),
+            },
+            SessionExportItem {
+                detail: sample_detail(Agent::Codex, "abcdef12-2222", day + 60_000, "", ""),
+                title: String::new(),
+            },
+        ];
+        let params = SessionsExportParams {
+            project: "",
+            include_tools: true,
+            lang: Lang::En,
+        };
+        let folder = build_sessions_folder(&items, &params);
+
+        let names: Vec<&str> = folder.files.iter().map(|f| f.file_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "claude_2026-05-16_0000_abcdef12_修一下-bug.md",
+                "claude_2026-05-16_0000_abcdef12_修一下-bug-2.md",
+                "codex_2026-05-16_0001_abcdef12.md",
+            ]
+        );
+        // 每个文件与单会话导出完全一致
+        assert_eq!(
+            folder.files[0].markdown,
+            build_conversation_markdown(&items[0].detail, true, Lang::En)
+        );
+        assert!(folder.files[0]
+            .markdown
+            .starts_with("# Conversation Export\n"));
+        // index.md：没有项目时标题不带项目名，表格链接到各文件，空标题用占位文案
+        assert!(folder
+            .index_markdown
+            .starts_with("# Sessions Export\n\n> **Exported at**　"));
+        assert!(!folder.index_markdown.contains("**Project**"));
+        assert!(folder.index_markdown.contains("> **Sessions**　3\n"));
+        assert!(folder.index_markdown.contains("| File |"));
+        assert!(folder.index_markdown.contains(
+            "[claude_2026-05-16_0000_abcdef12_修一下-bug-2.md](claude_2026-05-16_0000_abcdef12_修一下-bug-2.md)"
+        ));
+        assert!(folder.index_markdown.contains("| (no user messages) |"));
+        assert!(folder
+            .index_markdown
+            .contains("> **Tool calls & thinking**　included\n"));
+    }
+
+    #[test]
+    fn export_marks_blocks_the_display_parser_clipped() {
+        let mut detail = sample_detail(
+            Agent::Claude,
+            "clipped",
+            day_start_ms("2026-05-16").unwrap(),
+            "问",
+            "答",
+        );
+        detail.messages[1].blocks[1].truncated = true;
+        let md = build_conversation_markdown(&detail, false, Lang::Zh);
+        assert!(md.contains("答\n\n_（内容过长，已截断）_\n\n"));
+        let en = build_conversation_markdown(&detail, false, Lang::En);
+        assert!(en.contains("_(content truncated)_"));
+        detail.messages[1].blocks[1].truncated = false;
+        assert!(!build_conversation_markdown(&detail, false, Lang::Zh).contains("截断"));
+    }
+
+    #[test]
+    fn titles_and_filename_fragments_are_normalized() {
+        assert_eq!(
+            shorten_title("\n\n  第一行   有 空格 \n第二行", 60),
+            "第一行 有 空格"
+        );
+        let long = "x".repeat(80);
+        let short = shorten_title(&long, 60);
+        assert_eq!(short.chars().count(), 60);
+        assert!(short.ends_with('…'));
+        assert_eq!(table_cell("a|b\nc"), "a\\|b c");
+
+        assert_eq!(
+            filename_fragment("  fix: the/bug  (again) ", 40),
+            "fix-the-bug-again"
+        );
+        assert_eq!(filename_fragment("修一下 bug！！", 40), "修一下-bug");
+        assert_eq!(filename_fragment("!!!", 40), "");
+        assert_eq!(filename_fragment("abcdefghij", 5), "abcde");
+        assert_eq!(filename_fragment("abcd-efgh", 5), "abcd");
     }
 }

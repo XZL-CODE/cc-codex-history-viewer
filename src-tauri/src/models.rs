@@ -306,6 +306,34 @@ pub struct ConversationExportResult {
     pub message_count: usize,
 }
 
+/// One session picked for a batch export, addressed by agent + session ID.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRef {
+    pub agent: Agent,
+    pub session_id: String,
+}
+
+/// Payload of the `export-progress` event emitted while a batch export parses sessions.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportProgress {
+    pub done: usize,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionsExportResult {
+    /// The merged Markdown file, or the folder holding one file per session plus index.md.
+    pub path: String,
+    pub merged: bool,
+    pub session_count: usize,
+    pub message_count: usize,
+    /// Markdown files written; index.md is included in folder mode.
+    pub file_count: usize,
+}
+
 // ----------------------------- Settings -----------------------------
 
 /// Old four-field Claude settings remain valid because every new field defaults to empty.

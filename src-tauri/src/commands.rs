@@ -9,14 +9,20 @@ use crate::indexer::{self, AppIndex};
 use crate::models::*;
 use crate::state::{self, load_settings, resolve_data_paths, resolve_from_settings, AppState};
 use crate::{codex_parser, parser};
+use rayon::prelude::*;
+use serde::Serialize;
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Event name for index build progress; the payload is an [`IndexProgress`].
 pub const INDEX_PROGRESS_EVENT: &str = "index-progress";
+
+/// Event name for batch export progress; the payload is an [`ExportProgress`].
+pub const EXPORT_PROGRESS_EVENT: &str = "export-progress";
 
 /// Agent-aware, file-level cache owned by this application.
 fn cache_file(app: &AppHandle) -> Option<PathBuf> {
@@ -38,26 +44,26 @@ fn cleanup_legacy_cache(app: &AppHandle) {
     }
 }
 
-/// Throttled progress emitter shared by the parser worker threads.
-struct ProgressReporter {
+/// Rate-limited event emitter shared by parser worker threads: `boundary` payloads (start,
+/// end, phase changes) always go out, the rest at most once per 80 ms.
+struct ThrottledEmitter {
     app: AppHandle,
+    event: &'static str,
     last_emit: Mutex<Option<Instant>>,
 }
 
-impl ProgressReporter {
+impl ThrottledEmitter {
     const MIN_INTERVAL: Duration = Duration::from_millis(80);
 
-    fn new(app: AppHandle) -> Self {
+    fn new(app: AppHandle, event: &'static str) -> Self {
         Self {
             app,
+            event,
             last_emit: Mutex::new(None),
         }
     }
 
-    fn report(&self, progress: IndexProgress) {
-        let boundary = progress.phase != IndexPhase::Parsing
-            || progress.done == 0
-            || progress.done == progress.total;
+    fn emit<T: Serialize + Clone>(&self, payload: T, boundary: bool) {
         {
             let mut last = self
                 .last_emit
@@ -68,7 +74,23 @@ impl ProgressReporter {
             }
             *last = Some(Instant::now());
         }
-        let _ = self.app.emit(INDEX_PROGRESS_EVENT, progress);
+        let _ = self.app.emit(self.event, payload);
+    }
+}
+
+/// Index build progress reporter.
+struct ProgressReporter(ThrottledEmitter);
+
+impl ProgressReporter {
+    fn new(app: AppHandle) -> Self {
+        Self(ThrottledEmitter::new(app, INDEX_PROGRESS_EVENT))
+    }
+
+    fn report(&self, progress: IndexProgress) {
+        let boundary = progress.phase != IndexPhase::Parsing
+            || progress.done == 0
+            || progress.done == progress.total;
+        self.0.emit(progress, boundary);
     }
 }
 
@@ -312,16 +334,17 @@ fn lookup_session_file(index: &AppIndex, agent: Agent, session_id: &str) -> Resu
         .ok_or_else(|| format!("Conversation not found: {}:{session_id}", agent.as_str()))
 }
 
-/// 解析会话详情并附上索引中归属该会话的用量。
+/// 解析会话详情并附上索引中归属该会话的用量。`block_limit` 为 None 时不截断任何内容块。
 async fn load_conversation(
     state: &AppState,
     app: &AppHandle,
     agent: Agent,
     session_id: &str,
+    block_limit: parser::BlockLimit,
 ) -> Result<ConversationDetail, String> {
     let index = ensure_index(state, app).await?;
     let file = lookup_session_file(&index, agent, session_id)?;
-    let mut detail = parse_detail(agent, file).await?;
+    let mut detail = parse_detail(agent, file, block_limit).await?;
     detail.usage = index
         .session_usage
         .get(&(agent, session_id.to_string()))
@@ -330,11 +353,26 @@ async fn load_conversation(
     Ok(detail)
 }
 
+/// 同步解析一个会话文件；单会话详情、单会话导出与批量导出共用。
+fn parse_detail_sync(
+    agent: Agent,
+    file: &Path,
+    block_limit: parser::BlockLimit,
+) -> Option<ConversationDetail> {
+    match agent {
+        Agent::Claude => parser::parse_conversation_detail_with_limit(file, block_limit),
+        Agent::Codex => codex_parser::parse_rollout_detail_with_limit(file, block_limit),
+    }
+}
+
 /// 在阻塞线程池中解析单个会话文件的完整内容
-async fn parse_detail(agent: Agent, file: String) -> Result<ConversationDetail, String> {
-    tauri::async_runtime::spawn_blocking(move || match agent {
-        Agent::Claude => parser::parse_conversation_detail(Path::new(&file)),
-        Agent::Codex => codex_parser::parse_rollout_detail(Path::new(&file)),
+async fn parse_detail(
+    agent: Agent,
+    file: String,
+    block_limit: parser::BlockLimit,
+) -> Result<ConversationDetail, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        parse_detail_sync(agent, Path::new(&file), block_limit)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -350,7 +388,14 @@ pub async fn get_conversation(
     app: AppHandle,
 ) -> Result<ConversationDetail, String> {
     let agent = agent.unwrap_or(Agent::Claude);
-    load_conversation(&state, &app, agent, &session_id).await
+    load_conversation(
+        &state,
+        &app,
+        agent,
+        &session_id,
+        parser::DISPLAY_BLOCK_LIMIT,
+    )
+    .await
 }
 
 /// 索引元信息
@@ -565,7 +610,7 @@ fn sanitize_for_filename(q: &str) -> String {
     }
 }
 
-/// 导出单个会话的完整对话为 Markdown。
+/// 导出单个会话的完整对话为 Markdown（解析不截断，导出的是完整内容）。
 /// write=false 仅生成预览；write=true 额外写入 ~/Downloads。
 #[tauri::command]
 pub async fn export_conversation(
@@ -578,7 +623,7 @@ pub async fn export_conversation(
     app: AppHandle,
 ) -> Result<ConversationExportResult, String> {
     let agent = agent.unwrap_or(Agent::Claude);
-    let detail = load_conversation(&state, &app, agent, &session_id).await?;
+    let detail = load_conversation(&state, &app, agent, &session_id, None).await?;
     let lang = Lang::from_opt(lang.as_deref());
     let markdown = export::build_conversation_markdown(&detail, include_tools, lang);
 
@@ -599,7 +644,128 @@ pub async fn export_conversation(
     })
 }
 
-/// 在系统文件管理器中定位某个文件（macOS：Finder 选中）。
+/// 批量导出多个会话。merge=true 合成一份 Markdown；否则在下载目录下新建文件夹，
+/// 每个会话一个文件并附 index.md。解析走不截断路径，在阻塞线程池中并行进行，
+/// 通过 `export-progress` 事件汇报进度。总是写文件，没有预览模式。
+#[tauri::command]
+pub async fn export_sessions(
+    project: String,
+    sessions: Vec<SessionRef>,
+    merge: bool,
+    include_tools: bool,
+    lang: Option<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<SessionsExportResult, String> {
+    if sessions.is_empty() {
+        return Err("没有选中任何会话。".to_string());
+    }
+    let lang = Lang::from_opt(lang.as_deref());
+    let index = ensure_index(&state, &app).await?;
+
+    // 先解析出全部文件路径和列表标题：选择集过期时在写任何东西之前就失败。
+    let mut jobs: Vec<(SessionRef, String, String)> = Vec::with_capacity(sessions.len());
+    for session in sessions {
+        let file = lookup_session_file(&index, session.agent, &session.session_id)?;
+        let title = index
+            .sessions
+            .iter()
+            .find(|s| s.agent == session.agent && s.session_id == session.session_id)
+            .map(|s| s.title.clone())
+            .unwrap_or_default();
+        jobs.push((session, file, title));
+    }
+    let total = jobs.len();
+    let reporter = ThrottledEmitter::new(app.clone(), EXPORT_PROGRESS_EVENT);
+    reporter.emit(ExportProgress { done: 0, total }, true);
+
+    let items = tauri::async_runtime::spawn_blocking(move || {
+        let done = AtomicUsize::new(0);
+        let parsed: Vec<Result<export::SessionExportItem, String>> = jobs
+            .par_iter()
+            .map(|(session, file, title)| {
+                let detail = parse_detail_sync(session.agent, Path::new(file), None);
+                let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
+                reporter.emit(
+                    ExportProgress {
+                        done: finished,
+                        total,
+                    },
+                    finished == total,
+                );
+                let mut detail = detail.ok_or_else(|| {
+                    format!(
+                        "对话文件解析失败：{}:{}",
+                        session.agent.as_str(),
+                        session.session_id
+                    )
+                })?;
+                detail.usage = index
+                    .session_usage
+                    .get(&(session.agent, session.session_id.clone()))
+                    .cloned()
+                    .unwrap_or_default();
+                Ok(export::SessionExportItem {
+                    detail,
+                    title: title.clone(),
+                })
+            })
+            .collect();
+        parsed.into_iter().collect::<Result<Vec<_>, String>>()
+    })
+    .await
+    .map_err(|error| format!("Export task failed: {error}"))??;
+
+    let session_count = items.len();
+    let message_count: usize = items.iter().map(|item| item.detail.messages.len()).sum();
+    let params = export::SessionsExportParams {
+        project: &project,
+        include_tools,
+        lang,
+    };
+    let folder_name = export::filename_fragment(&indexer::project_name(&project), 40);
+    let base = format!(
+        "{}_Sessions_{}",
+        if folder_name.is_empty() {
+            "Coding-Agent".to_string()
+        } else {
+            folder_name
+        },
+        chrono::Local::now().format("%Y-%m-%d")
+    );
+
+    if merge {
+        let markdown = export::build_sessions_merged(&items, &params);
+        let target = unique_export_path(&base);
+        std::fs::write(&target, markdown).map_err(|e| format!("写入文件失败：{e}"))?;
+        return Ok(SessionsExportResult {
+            path: target.to_string_lossy().to_string(),
+            merged: true,
+            session_count,
+            message_count,
+            file_count: 1,
+        });
+    }
+
+    let folder = export::build_sessions_folder(&items, &params);
+    let target = unique_export_dir(&base);
+    std::fs::create_dir_all(&target).map_err(|e| format!("创建文件夹失败：{e}"))?;
+    for file in &folder.files {
+        std::fs::write(target.join(&file.file_name), &file.markdown)
+            .map_err(|e| format!("写入文件失败：{e}"))?;
+    }
+    std::fs::write(target.join("index.md"), &folder.index_markdown)
+        .map_err(|e| format!("写入文件失败：{e}"))?;
+    Ok(SessionsExportResult {
+        path: target.to_string_lossy().to_string(),
+        merged: false,
+        session_count,
+        message_count,
+        file_count: folder.files.len() + 1,
+    })
+}
+
+/// 在系统文件管理器中定位某个文件或文件夹（macOS：Finder 选中）。
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
@@ -635,13 +801,22 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 
 /// 下载目录下生成不冲突的导出文件路径：base.md → base (2).md → …
 fn unique_export_path(base: &str) -> PathBuf {
+    unique_export_target(base, ".md")
+}
+
+/// 下载目录下生成不冲突的导出文件夹路径：base → base (2) → …
+fn unique_export_dir(base: &str) -> PathBuf {
+    unique_export_target(base, "")
+}
+
+fn unique_export_target(base: &str, extension: &str) -> PathBuf {
     let dir = dirs::download_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
-    let mut candidate = dir.join(format!("{base}.md"));
+    let mut candidate = dir.join(format!("{base}{extension}"));
     let mut n = 2;
     while candidate.exists() {
-        candidate = dir.join(format!("{base} ({n}).md"));
+        candidate = dir.join(format!("{base} ({n}){extension}"));
         n += 1;
     }
     candidate
