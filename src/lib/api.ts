@@ -16,7 +16,9 @@ import type {
   ProjectInfo,
   PromptEntry,
   SearchResult,
+  SessionRef,
   SessionSummary,
+  SessionsExportResult,
   SettingsInput,
   SettingsView,
   SortMode,
@@ -136,6 +138,22 @@ export const api = {
       agent: p.agent,
       includeTools: p.includeTools,
       write: p.write,
+      lang: p.lang,
+    }),
+
+  /** 批量导出多个会话：merge=true 合成一份，否则每个会话一份并附 index.md；总是写入 ~/Downloads，进度走 `export-progress` 事件 */
+  exportSessions: (p: {
+    project: string;
+    sessions: SessionRef[];
+    merge: boolean;
+    includeTools: boolean;
+    lang?: string;
+  }) =>
+    invoke<SessionsExportResult>("export_sessions", {
+      project: p.project,
+      sessions: p.sessions,
+      merge: p.merge,
+      includeTools: p.includeTools,
       lang: p.lang,
     }),
 

@@ -246,6 +246,30 @@ export interface ConversationExportResult {
   messageCount: number;
 }
 
+/* ----------------------------- 批量会话导出 ----------------------------- */
+
+/** 批量导出的一个目标会话；同一 session ID 可能同时存在于两个产品，必须带 agent */
+export interface SessionRef {
+  agent: Agent;
+  sessionId: string;
+}
+
+/** 后端 `export-progress` 事件的载荷：已解析 / 总数 */
+export interface ExportProgress {
+  done: number;
+  total: number;
+}
+
+export interface SessionsExportResult {
+  /** 合并模式是 .md 文件路径；多文件模式是文件夹路径（每个会话一份 .md，另附 index.md） */
+  path: string;
+  merged: boolean;
+  sessionCount: number;
+  messageCount: number;
+  /** 写入的 Markdown 文件数；多文件模式含 index.md */
+  fileCount: number;
+}
+
 /* ----------------------------- 设置 ----------------------------- */
 
 export interface SettingsInput {
