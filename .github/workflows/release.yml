@@ -1,7 +1,8 @@
 # 发布桌面安装包：macOS 通用 dmg（Apple Silicon + Intel）与 Windows exe/msi。
 # 触发方式：推送 v* 标签、改动 .github/release-trigger、或在 Actions 页面手动运行；
 # Release 标签取 v<tauri.conf.json 版本>，Release 不存在时由工作流创建（标签指向当前提交）。
-# 产物由 tauri-action 上传到同名 GitHub Release；应用未签名，说明见 Release 正文。
+# 产物由 tauri-action 上传到同名 GitHub Release。Release 正文 = .github/release-notes.md 里的本版
+# 更新内容（每次发版前更新）+ 下面 INSTALL_NOTES 里固定的安装说明（应用未签名的打开方法）。
 name: Release desktop builds
 
 on:
@@ -51,6 +52,29 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # Release 正文：release-notes.md 的更新内容 + 固定的安装说明，作为多行 output 传给 tauri-action
+      - name: Compose release body
+        id: notes
+        shell: bash
+        env:
+          INSTALL_NOTES: |
+            ## 安装说明 / Install notes
+
+            **macOS**：`*.dmg` 为通用二进制（Apple Silicon 与 Intel 均可）。应用未经 Apple 签名与公证，首次打开若提示“已损坏”或“无法验证开发者”，在终端执行：
+            `xattr -cr "/Applications/Coding Agent History Viewer.app"`，或在 Finder 中右键“打开”。
+
+            **Windows**：`*-setup.exe` 为 NSIS 安装包，`*.msi` 为 MSI 安装包。应用未签名，SmartScreen 提示时选择“更多信息 → 仍要运行”。
+
+            The app makes no network requests and reads Claude Code / Codex history locally only.
+        run: |
+          {
+            echo 'body<<RELEASE_BODY_EOF'
+            cat .github/release-notes.md
+            echo
+            printf '%s\n' "$INSTALL_NOTES"
+            echo 'RELEASE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and upload bundles
         uses: tauri-apps/tauri-action@v0
         env:
@@ -62,12 +86,4 @@ jobs:
           prerelease: false
           includeUpdaterJson: false
           args: ${{ matrix.args }}
-          releaseBody: |
-            Coding Agent History Viewer 桌面安装包 / desktop installers.
-
-            **macOS**：`*.dmg` 为通用二进制（Apple Silicon 与 Intel 均可）。应用未经 Apple 签名与公证，首次打开若提示“已损坏”或“无法验证开发者”，在终端执行：
-            `xattr -cr "/Applications/Coding Agent History Viewer.app"`，或在 Finder 中右键“打开”。
-
-            **Windows**：`*-setup.exe` 为 NSIS 安装包，`*.msi` 为 MSI 安装包。应用未签名，SmartScreen 提示时选择“更多信息 → 仍要运行”。
-
-            The app makes no network requests and reads Claude Code / Codex history locally only.
+          releaseBody: ${{ steps.notes.outputs.body }}
