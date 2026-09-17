@@ -1,6 +1,6 @@
 [package]
 name = "cc-history-viewer"
-version = "0.7.0"
+version = "0.8.0"
 description = "Local history viewer for Claude Code and OpenAI Codex"
 authors = ["xzl"]
 edition = "2021"
