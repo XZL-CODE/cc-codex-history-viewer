@@ -27,6 +27,8 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 - **对话详情**：助手回复按 Markdown 渲染并高亮代码；Bash/Edit/Write/Read/TodoWrite 与 Codex apply_patch 等工具调用按语义展示（命令、行级 diff、补丁、清单）；会话内查找、用户轮次大纲、全部展开/折叠、超长会话分批渲染。
 - **每会话 Token 与成本**：会话列表可按最新 / 成本 / 消息数 / 时长排序；fork/resume 复制的调用只计入原会话，各会话之和等于全局总量。
 - **批量导出会话**：在文件夹页的「会话」标签页勾选多个会话一次导出，可合成一份 Markdown（带目录表），或每个会话一份并附 index.md；可选是否包含工具调用与思考过程。单会话与批量导出都走不截断的解析路径，超长工具结果完整保留。
+- **导入 Claude Code 会话**：把云端 Claude Code（claude.ai/code）打包的 zip 导入本机 projects 目录，之后与本机会话一样检索、查看和导出。导入前先生成计划，逐会话判定新增 / 更新 / 跳过 / 冲突，冲突逐个选择「保留本机」或「用导入的覆盖」；云端的 `/home/user/<仓库名>` 可映射到本机目录，映射会被记住。详见[导入 Claude Code 会话](#导入-claude-code-会话)。
+- **对话详情补充**：`<persisted-output>` 标记的超大工具输出可在详情里按需展开完整内容，导出时内联；@ 引用或上传的文件以「附件」折叠块显示；只有 signature、正文为空的思考块不再显示。
 - **统计范围与活跃度日历**：概览支持全部 / 近 7 天 / 近 30 天 / 本月 / 自定义区间，日历热力图补齐没有记录的日期。
 - Prompt、会话和导出内容保留 Claude Code 或 Codex 来源标识。
 - 统计每日活动、小时与星期分布、项目排行、模型、CLI 版本、Token、缓存命中率和估算成本。
@@ -54,7 +56,7 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 | 完整会话 | `~/.claude/projects/**/*.jsonl` | 用户/助手消息、工具调用和用量 |
 | 会话元数据 | `~/.claude/sessions/*.json` | CLI 版本等补充信息 |
 
-设置中的 `historyFile`、`projectsDir`、`sessionsDir` 可分别覆盖路径；否则从 `claudeDataDir` 推导；仍未配置时使用 `~/.claude`。这些旧字段继续兼容已有 `settings.json`。
+设置中的 `historyFile`、`projectsDir`、`sessionsDir` 可分别覆盖路径；否则从 `claudeDataDir` 推导；仍未配置时使用 `~/.claude`。这些旧字段继续兼容已有 `settings.json`。`importPathMappings` 记录导入会话时确认过的云端目录到本机目录的映射，可在设置里删除。
 
 #### OpenAI Codex
 
@@ -176,13 +178,35 @@ cacheRead / (uncachedInput + cacheRead)
 
 搜索页的“会话内容”模式不建立任何索引：每次搜索并行流式扫描当前筛选范围内的会话文件，先用大小写不敏感的字节子串预筛原始行，只解析命中的行。覆盖用户消息、助手回复、思考摘要与工具调用参数；工具结果正文（文件内容、命令输出）不参与匹配，developer/system 与 `AGENTS.md` 等注入内容也不会命中。多个关键词需同时出现在同一条消息中。每个会话最多返回 20 条、总计最多 300 条，超出时提示缩小范围。
 
+### 导入 Claude Code 会话
+
+在云端 Claude Code 里让它把会话记录打包成 zip（保持 `~/.claude` 的原始层级），下载到本机后点击顶栏的「导入」：
+
+```text
+projects/<项目目录名>/<会话ID>.jsonl
+projects/<项目目录名>/<会话ID>/          ← 同名旁挂目录：tool-results/*.txt、可能有 subagents/
+```
+
+- **写入位置**：解压到当前配置的 Claude projects 目录（默认 `~/.claude/projects`），去掉 zip 里的 `projects/` 前缀。导入的会话与本机会话一样受 Claude Code 默认 30 天的记录清理影响。
+- **安全**：只接受 `projects/<目录名>/` 之下的条目；绝对路径、含 `..` 的路径和符号链接会让整个导入包被拒绝，什么都不写。`__MACOSX/`、`.DS_Store` 等 `projects/` 之外或无法归入会话的条目跳过并在汇总里列出。
+- **项目映射**：云端会话的工作目录是 `/home/user/<仓库名>`。导入弹窗按仓库名预填本机已索引的项目，也可用文件夹选择器指定，或保持原路径。指定本机目录后，只改写每行顶层的 `cwd` 字段，其余内容原样保留，会话写入本机路径对应的项目目录，viewer 归到该项目，本机 `claude --resume <会话ID>` 也能找到它。确认过的映射记在设置文件里，下次导入同一仓库自动预填。
+- **计划规则**：jsonl 与旁挂目录作为一个会话整体判定。本机没有：新增；本机 jsonl 是导入 jsonl 的前缀（同一会话更新后的快照）：覆盖更新；导入 jsonl 是本机 jsonl 的前缀：跳过；完全相同：跳过，只补导入包里多出的旁挂文件；其余情况，以及 jsonl 相同但旁挂目录里有内容不同的同名文件：冲突。`ccr-tip.json` 这类运行时状态文件不参与比较。
+- **冲突处理**：弹窗逐个会话显示会话 ID、所属项目和两边的行数与最后一条记录时间，选择「保留本机」或「用导入的覆盖」，选择对整个会话生效；取消则什么都不写。
+- **写入与汇总**：先解析出计划，确认后一次性写入，写入前重新校验；只覆盖同名文件，绝不删除本机文件。写完走增量重建索引，并显示新增、更新、跳过、冲突中保留本机、冲突中覆盖各多少个会话。
+
+### 超大工具输出与附件
+
+Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/tool-results/*.txt`，并在 tool_result 里留下 `<persisted-output>` 块和生成时的绝对路径。详情页按会话自己的目录和 `projects/` 之后的部分在当前 projects 目录下重新定位，`/` 与 `\` 分隔符都支持；找到就出现「查看完整输出」按钮，找不到保留原预览。导出包含工具调用时会内联完整输出并标注来源文件。只在显示层处理，不改写 jsonl。
+
+@ 引用或上传的文件内容记录在 `attachment` 行里，详情页以「附件：文件名」折叠块紧跟在对应用户消息之后，导出包含工具调用时一并写入。云端会话的 thinking 块只有 signature、正文为空，这类块不再显示。
+
 ### 隐私边界
 
 - 不读取 Codex `auth.json`。
 - 不把 Codex 私有 SQLite 表作为主要数据源。
 - 不联网、不上传、不遥测历史内容。
-- 不修改或删除 `~/.claude`、`~/.codex` 及自定义数据目录中的任何内容。
-- 应用只写自身设置、索引缓存、窗口位置状态，以及用户主动导出的 Markdown 文件；全文搜索按需读取会话文件，不写任何索引。
+- 不修改或删除 `~/.codex` 及自定义 Codex 目录中的任何内容；对 `~/.claude` 唯一的写入是用户主动确认的会话导入，且只写 `projects/<目录名>/` 之下的会话文件，只覆盖同名文件，绝不删除。
+- 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件，以及用户主动导入的会话文件；全文搜索按需读取会话文件，不写任何索引。
 - 对话里的链接只在用户点击时交给系统浏览器打开，应用本身不发起任何网络请求。
 
 ### 开发与验证
@@ -222,6 +246,8 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - **Conversation view**: assistant replies render as Markdown with syntax-highlighted code; Bash/Edit/Write/Read/TodoWrite and Codex apply_patch calls render semantically (commands, line diffs, patches, checklists); in-conversation find, a user-turn outline, expand/collapse all, and batched rendering for very long sessions.
 - **Per-session tokens and cost**: sort sessions by newest, cost, messages, or duration; calls copied by fork/resume count only in the original session, so session totals add up to the global totals.
 - **Batch session export**: tick several sessions on a folder's Sessions tab and export them at once, either as one merged Markdown file with a table of contents or as one file per session plus an index.md; optionally include tool calls and thinking. Single and batch exports parse without the display clip, so long tool results are kept whole.
+- **Import Claude Code sessions**: bring a zip packed by Claude Code on the web (claude.ai/code) into the local projects directory, then browse, search and export those sessions like local ones. A read-only plan classifies every session as add / update / skip / conflict first; conflicts are resolved one by one with "keep local" or "overwrite with import"; the cloud `/home/user/<repo>` can be mapped to a local folder and the mapping is remembered. See [Importing Claude Code sessions](#importing-claude-code-sessions).
+- **Conversation view additions**: tool outputs that Claude Code persisted to a file (`<persisted-output>`) can be expanded in full on demand and are inlined in exports; files referenced with @ or uploaded show as a collapsed "Attachment" block; thinking blocks that carry only a signature are hidden.
 - **Time range and activity calendar**: scope the overview to all time, last 7 / 30 days, this month, or a custom range; a calendar heatmap fills in days without records.
 - Preserve the Claude Code or Codex identity on prompts, sessions, and exports.
 - Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
@@ -241,7 +267,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 
 ### Data paths and precedence
 
-Claude Code defaults to `~/.claude/history.jsonl`, `~/.claude/projects/**/*.jsonl`, and `~/.claude/sessions/*.json`. Legacy `historyFile`, `projectsDir`, and `sessionsDir` settings override individual paths; otherwise paths derive from `claudeDataDir`, then `~/.claude`.
+Claude Code defaults to `~/.claude/history.jsonl`, `~/.claude/projects/**/*.jsonl`, and `~/.claude/sessions/*.json`. Legacy `historyFile`, `projectsDir`, and `sessionsDir` settings override individual paths; otherwise paths derive from `claudeDataDir`, then `~/.claude`. `importPathMappings` stores the cloud-to-local folder pairs confirmed during session imports; they can be removed in Settings.
 
 Codex reads:
 
@@ -307,7 +333,29 @@ The index builds on a background thread and reports progress while other queries
 
 Full-text conversation search builds no index: each search streams the session files in the current scope in parallel, prefilters raw lines with a case-insensitive byte search, and parses only matching lines. It covers user messages, assistant replies, thinking summaries, and tool-call inputs; tool results (file contents, command output) and injected developer/system or `AGENTS.md` context never match. Every keyword must appear in the same message. At most 20 hits per session and 300 in total are returned, with a notice when results are truncated.
 
-The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never writes or deletes data under Claude/Codex roots. It writes only its own settings, index cache, window state, and Markdown files explicitly exported by the user. Links inside conversations open in the system browser only when clicked.
+The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, and Markdown files explicitly exported by the user. Links inside conversations open in the system browser only when clicked.
+
+### Importing Claude Code sessions
+
+Ask Claude Code on the web to pack the session records as a zip that keeps the `~/.claude` layout, download it, and click **Import** in the top bar:
+
+```text
+projects/<project dir>/<session id>.jsonl
+projects/<project dir>/<session id>/      ← side directory: tool-results/*.txt, maybe subagents/
+```
+
+- **Destination**: the configured Claude projects directory (default `~/.claude/projects`), with the zip's `projects/` prefix removed. Imported sessions are subject to Claude Code's default 30-day cleanup like any local session.
+- **Safety**: only entries below `projects/<dir>/` are accepted. Absolute paths, `..` components and symlinks reject the whole archive without writing anything; `__MACOSX/`, `.DS_Store` and other entries outside `projects/` or not belonging to a session are skipped and listed in the summary.
+- **Project mapping**: cloud sessions run in `/home/user/<repo>`. The dialog prefills a local project with the same folder name, or lets you pick a folder, or keep the original path. With a mapping, only each line's top-level `cwd` is rewritten, everything else is kept byte for byte, the session lands in the directory that encodes the local path, the viewer groups it with the local project, and `claude --resume <session id>` finds it locally. Confirmed mappings are stored in settings and prefilled next time.
+- **Plan rules**: a session is the transcript plus its side directory. Missing locally: add. Local transcript is a prefix of the imported one (a newer snapshot of the same session): update. Imported transcript is a prefix of the local one: skip. Identical: skip, only adding side files the archive has and the local copy lacks. Anything else, including identical transcripts with a differing same-named side file: conflict. Runtime markers such as `ccr-tip.json` are not compared.
+- **Conflicts**: the dialog shows the session ID, project, and each side's line count and last record time; choose "keep local" or "overwrite with import" per session. The choice covers the whole session, and cancelling writes nothing.
+- **Write and summary**: the plan is computed first and re-validated right before writing; files are written atomically, same-named files are overwritten, nothing is deleted. The index then refreshes incrementally and the summary reports added, updated, skipped, kept-local and overwritten sessions.
+
+### Persisted tool outputs and attachments
+
+Claude Code stores very large tool outputs in `projects/<dir>/<session id>/tool-results/*.txt` and leaves a `<persisted-output>` block with the absolute path of the machine that produced it. The conversation view re-resolves that path under the current projects directory, first through the session's own directory and then through the part after `projects/`, accepting both `/` and `\`; when the file exists a "View full output" button appears, otherwise the original preview stays. Exports that include tool calls inline the full output and note its source file. Transcripts are never rewritten.
+
+Files referenced with @ or uploaded are recorded as `attachment` lines; they render as a collapsed "Attachment: file name" block right after the user message and are exported when tool calls are included. Thinking blocks from cloud sessions carry only a signature with an empty body; such blocks are hidden.
 
 ### Development and release checks
 

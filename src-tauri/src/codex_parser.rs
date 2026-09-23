@@ -489,6 +489,7 @@ impl RolloutAccumulator {
                     tool_name: Some(name.clone()),
                     tool_input: input,
                     truncated: false,
+                    persisted_output: None,
                 }],
             ),
         });
@@ -797,6 +798,7 @@ fn clipped_block(
         tool_name,
         tool_input: None,
         truncated,
+        persisted_output: None,
     }
 }
 
@@ -807,6 +809,7 @@ fn image_block() -> ContentBlock {
         tool_name: None,
         tool_input: None,
         truncated: false,
+        persisted_output: None,
     }
 }
 

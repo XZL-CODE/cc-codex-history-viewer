@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "应用默认权限。Claude Code 与 Codex 历史均由 Rust 后端直接只读访问，前端不直接访问文件系统，因此只需核心权限。",
+  "description": "应用默认权限。Claude Code 与 Codex 历史均由 Rust 后端直接访问，前端不直接访问文件系统；dialog:allow-open 只用于导入时选择 zip 文件与本机文件夹。",
   "windows": ["main"],
-  "permissions": ["core:default", "window-state:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "window-state:default",
+    "opener:default",
+    "dialog:allow-open"
+  ]
 }

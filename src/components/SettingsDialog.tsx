@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { useSettings } from "@/hooks/queries";
 import { api, errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
@@ -17,7 +17,16 @@ const EMPTY_FORM: SettingsInput = {
   historyFile: "",
   projectsDir: "",
   sessionsDir: "",
+  importPathMappings: {},
 };
+
+function sameMappings(a: Record<string, string>, b: Record<string, string>) {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  return (
+    keysA.length === keysB.length && keysA.every((key) => a[key] === b[key])
+  );
+}
 
 function ResolvedRow({
   label,
@@ -96,6 +105,7 @@ export function SettingsDialog({
         historyFile: data.historyFile,
         projectsDir: data.projectsDir,
         sessionsDir: data.sessionsDir,
+        importPathMappings: { ...(data.importPathMappings ?? {}) },
       });
     }
   }, [data]);
@@ -115,17 +125,29 @@ export function SettingsDialog({
       form.codexDataDir !== data.codexDataDir ||
       form.historyFile !== data.historyFile ||
       form.projectsDir !== data.projectsDir ||
-      form.sessionsDir !== data.sessionsDir
+      form.sessionsDir !== data.sessionsDir ||
+      !sameMappings(form.importPathMappings, data.importPathMappings ?? {})
     );
   }, [form, data]);
 
   if (!open) return null;
 
   const setField =
-    (key: keyof SettingsInput) => (e: ChangeEvent<HTMLInputElement>) => {
+    (key: Exclude<keyof SettingsInput, "importPathMappings">) =>
+    (e: ChangeEvent<HTMLInputElement>) => {
       setSavedMsg(false);
       setForm((f) => ({ ...f, [key]: e.target.value }));
     };
+
+  const removeMapping = (cloud: string) => {
+    setSavedMsg(false);
+    setForm((f) => {
+      const next = { ...f.importPathMappings };
+      delete next[cloud];
+      return { ...f, importPathMappings: next };
+    });
+  };
+  const mappingEntries = Object.entries(form.importPathMappings);
 
   const handleSave = async () => {
     if (!dirty || saving) return;
@@ -231,6 +253,46 @@ export function SettingsDialog({
                   placeholder={t("codexDataDirPlaceholder")}
                   onChange={setField("codexDataDir")}
                 />
+              </section>
+
+              <section className="space-y-2 rounded-lg border border-border p-3">
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("importMappingsSection")}
+                </h3>
+                <p className="text-[11px] leading-relaxed text-muted">
+                  {t("importMappingsHint")}
+                </p>
+                {mappingEntries.length === 0 ? (
+                  <p className="text-[11px] text-muted">{t("importMappingsEmpty")}</p>
+                ) : (
+                  <ul className="divide-y divide-border rounded-lg bg-surface-2/60">
+                    {mappingEntries.map(([cloud, local]) => (
+                      <li
+                        key={cloud}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs"
+                      >
+                        <span className="min-w-0 flex-1 truncate" title={cloud}>
+                          {cloud}
+                        </span>
+                        <span className="shrink-0 text-muted">→</span>
+                        <span
+                          className="min-w-0 flex-1 truncate text-foreground"
+                          title={local}
+                        >
+                          {local}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => removeMapping(cloud)}
+                          title={t("importMappingRemove")}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
 
               <section className="space-y-3 rounded-lg border border-border p-3">

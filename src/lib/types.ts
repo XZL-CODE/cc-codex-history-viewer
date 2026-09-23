@@ -82,15 +82,34 @@ export type BlockKind =
   | "thinking"
   | "tool_use"
   | "tool_result"
-  | "image";
+  | "image"
+  | "attachment";
+
+/** tool_result 的完整输出被 Claude Code 持久化到 projects 目录下的文件，本机能找到时才带此字段 */
+export interface PersistedOutput {
+  /** 相对 projects 目录的路径，`/` 分隔；传给 read_persisted_output */
+  path: string;
+  size: number;
+  /** 导出路径下正文已替换为完整内容 */
+  inlined: boolean;
+}
+
+export interface PersistedOutputText {
+  text: string;
+  truncated: boolean;
+  size: number;
+}
 
 export interface ContentBlock {
   kind: BlockKind;
+  /** attachment：文件内容 */
   text: string | null;
+  /** tool_use / tool_result：工具名；attachment：原始文件路径 */
   toolName: string | null;
   toolInput: unknown | null;
   /** text 已按展示上限截断 */
   truncated: boolean;
+  persistedOutput?: PersistedOutput;
 }
 
 export interface ChatMessage {
@@ -270,6 +289,96 @@ export interface SessionsExportResult {
   fileCount: number;
 }
 
+/* ----------------------------- 导入 Claude Code 会话 ----------------------------- */
+
+export interface ImportProject {
+  /** zip 内 projects/ 下的目录名 */
+  cloudDir: string;
+  /** 会话记录里的根工作目录（编码后等于 cloudDir） */
+  cloudCwd: string;
+  sessionCount: number;
+  suggestedLocal: string | null;
+  suggestionSource: "remembered" | "name" | null;
+}
+
+export interface ImportInspection {
+  zipPath: string;
+  projects: ImportProject[];
+  sessionCount: number;
+  skippedEntries: string[];
+}
+
+/** localCwd 为空 / null 表示保持原路径 */
+export interface ProjectMapping {
+  cloudCwd: string;
+  localCwd: string | null;
+}
+
+export type ImportAction =
+  | "add"
+  | "update"
+  | "skip_identical"
+  | "skip_older"
+  | "conflict";
+
+export interface SessionSide {
+  lines: number;
+  /** 最后一条带时间戳记录的毫秒时间；0 表示没有 */
+  lastTimestamp: number;
+  bytes: number;
+}
+
+export interface PlannedSession {
+  sessionId: string;
+  cloudDir: string;
+  cloudCwd: string;
+  targetDir: string;
+  targetCwd: string;
+  title: string;
+  action: ImportAction;
+  imported: SessionSide;
+  local: SessionSide | null;
+  sideFiles: number;
+  existingElsewhere: string | null;
+}
+
+export interface ImportPlanCounts {
+  add: number;
+  update: number;
+  skip: number;
+  conflict: number;
+}
+
+export interface ImportPlan {
+  zipPath: string;
+  sessions: PlannedSession[];
+  counts: ImportPlanCounts;
+  skippedEntries: string[];
+}
+
+export interface ConflictDecision {
+  cloudDir: string;
+  sessionId: string;
+  keepLocal: boolean;
+}
+
+export interface ImportedProject {
+  path: string;
+  name: string;
+}
+
+export interface ImportResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  keptLocal: number;
+  overwritten: number;
+  filesWritten: number;
+  skippedEntries: string[];
+  projects: ImportedProject[];
+  index: IndexMeta;
+}
+
 /* ----------------------------- 设置 ----------------------------- */
 
 export interface SettingsInput {
@@ -278,6 +387,8 @@ export interface SettingsInput {
   historyFile: string;
   projectsDir: string;
   sessionsDir: string;
+  /** 导入时记住的云端根目录 → 本机目录 */
+  importPathMappings: Record<string, string>;
 }
 
 export interface ResolvedClaudePaths {

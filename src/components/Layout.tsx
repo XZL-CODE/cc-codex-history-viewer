@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
+  Import,
   Info,
   Languages,
   Layers3,
@@ -14,6 +15,7 @@ import { useStore } from "@/store";
 import { useLang, useT } from "@/i18n";
 import { cn, decodePath, isMac, modKeyLabel, pathBasename } from "@/lib/utils";
 import { SEARCH_PATH } from "@/lib/search";
+import { ImportDialog } from "./ImportDialog";
 import { IndexProgressBar, indexProgressLabel } from "./IndexProgress";
 import { GLOBAL_SEARCH_INPUT_ID, SearchBar } from "./SearchBar";
 import { SettingsDialog } from "./SettingsDialog";
@@ -64,6 +66,9 @@ export function Layout() {
     settingsOpen,
     openSettings,
     closeSettings,
+    importOpen,
+    openImport,
+    closeImport,
     refreshing,
     refreshIndex,
     indexProgress,
@@ -189,6 +194,16 @@ export function Layout() {
             <RefreshCw size={16} className={cn(busy && "animate-spin")} />
           </Button>
 
+          <button
+            type="button"
+            onClick={openImport}
+            title={t("importButtonTitle")}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            <Import size={14} />
+            <span className="max-[1220px]:hidden">{t("importButton")}</span>
+          </button>
+
           <Button
             variant="ghost"
             size="icon"
@@ -213,6 +228,7 @@ export function Layout() {
       </header>
 
       <SettingsDialog open={settingsOpen} onClose={closeSettings} />
+      <ImportDialog open={importOpen} onClose={closeImport} />
 
       <div className="grid min-h-0 min-w-0 grid-cols-[264px_minmax(0,1fr)] max-[1220px]:grid-cols-[248px_minmax(0,1fr)]">
         <Sidebar />

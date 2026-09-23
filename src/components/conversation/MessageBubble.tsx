@@ -9,7 +9,7 @@ import { AgentBadge } from "@/components/AgentBadge";
 import { Collapsible } from "./Collapsible";
 import { Markdown } from "./Markdown";
 import { MarkText } from "./MarkText";
-import { ToolResultBlock, ToolUseBlock } from "./ToolBlock";
+import { AttachmentBlock, ToolResultBlock, ToolUseBlock } from "./ToolBlock";
 
 export type RenderMode = "rendered" | "raw";
 
@@ -98,6 +98,8 @@ function BlockView({
       return <ToolUseBlock block={block} regex={regex} />;
     case "tool_result":
       return <ToolResultBlock block={block} regex={regex} />;
+    case "attachment":
+      return <AttachmentBlock block={block} regex={regex} />;
     case "image":
       return (
         <div className="text-xs text-muted">🖼 {block.text ?? t("imageFallback")}</div>

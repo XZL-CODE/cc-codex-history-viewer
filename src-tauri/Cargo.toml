@@ -17,12 +17,15 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
 walkdir = "2"
 chrono = { version = "0.4", features = ["clock"] }
 rayon = "1"
+# 导入 zip 包：只需 deflate（zip -r 与 Finder 压缩的默认算法）
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [profile.release]
 opt-level = "s"

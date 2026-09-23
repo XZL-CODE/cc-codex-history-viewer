@@ -3,9 +3,11 @@ pub mod codex_parser;
 pub mod commands;
 pub mod content_search;
 pub mod export;
+pub mod import;
 pub mod indexer;
 pub mod models;
 pub mod parser;
+pub mod persisted;
 pub mod pricing;
 pub mod state;
 
@@ -17,6 +19,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_projects,
@@ -36,6 +39,10 @@ pub fn run() {
             commands::export_conversation,
             commands::export_sessions,
             commands::reveal_path,
+            commands::read_persisted_output,
+            commands::inspect_session_import,
+            commands::plan_session_import,
+            commands::apply_session_import,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

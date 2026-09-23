@@ -61,6 +61,18 @@ export function formatTokens(n: number): string {
   return String(v);
 }
 
+/** 字节数：≥1 MiB → "1.2 MB"，≥1 KiB → "34.5 KB"，否则 "512 B" */
+export function formatBytes(n: number): string {
+  const v = Math.max(0, n ?? 0);
+  const fmt = (x: number) => {
+    const s = x.toFixed(1);
+    return s.endsWith(".0") ? s.slice(0, -2) : s;
+  };
+  if (v >= 1024 * 1024) return `${fmt(v / (1024 * 1024))} MB`;
+  if (v >= 1024) return `${fmt(v / 1024)} KB`;
+  return `${v} B`;
+}
+
 /** 把绝对路径压缩为可读短路径：/Users/xxx/... 与 C:\Users\xxx\... → ~... */
 export function prettyPath(path: string): string {
   if (!path) return "";

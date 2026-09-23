@@ -8,7 +8,7 @@ use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
 use crate::state::{self, load_settings, resolve_data_paths, resolve_from_settings, AppState};
-use crate::{codex_parser, parser};
+use crate::{codex_parser, import, parser, persisted};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::cmp::Reverse;
@@ -23,6 +23,11 @@ pub const INDEX_PROGRESS_EVENT: &str = "index-progress";
 
 /// Event name for batch export progress; the payload is an [`ExportProgress`].
 pub const EXPORT_PROGRESS_EVENT: &str = "export-progress";
+
+/// 详情页按需读取持久化工具输出的上限（字符数上限之外的字节保险）。
+const DISPLAY_PERSISTED_MAX_BYTES: usize = 4 * 1024 * 1024;
+/// 导出内联持久化输出的上限；导出要求完整，只防御异常大的文件。
+const EXPORT_PERSISTED_MAX_BYTES: usize = 64 * 1024 * 1024;
 
 /// Agent-aware, file-level cache owned by this application.
 fn cache_file(app: &AppHandle) -> Option<PathBuf> {
@@ -343,8 +348,9 @@ async fn load_conversation(
     block_limit: parser::BlockLimit,
 ) -> Result<ConversationDetail, String> {
     let index = ensure_index(state, app).await?;
+    let projects_dir = resolve_data_paths(app)?.claude.projects;
     let file = lookup_session_file(&index, agent, session_id)?;
-    let mut detail = parse_detail(agent, file, block_limit).await?;
+    let mut detail = parse_detail(agent, file, block_limit, projects_dir).await?;
     detail.usage = index
         .session_usage
         .get(&(agent, session_id.to_string()))
@@ -354,14 +360,59 @@ async fn load_conversation(
 }
 
 /// 同步解析一个会话文件；单会话详情、单会话导出与批量导出共用。
+/// Claude 会话随后按本机 projects 目录重新定位持久化的超大工具输出：
+/// 展示路径（有截断上限）只标记可读取；导出路径（不截断）把完整内容内联进正文。
 fn parse_detail_sync(
     agent: Agent,
     file: &Path,
     block_limit: parser::BlockLimit,
+    projects_dir: &Path,
 ) -> Option<ConversationDetail> {
-    match agent {
+    let mut detail = match agent {
         Agent::Claude => parser::parse_conversation_detail_with_limit(file, block_limit),
         Agent::Codex => codex_parser::parse_rollout_detail_with_limit(file, block_limit),
+    }?;
+    if agent == Agent::Claude {
+        resolve_persisted_outputs(&mut detail, projects_dir, file, block_limit.is_none());
+    }
+    Some(detail)
+}
+
+/// 把解析层记下的原始路径换成本机 projects 目录下的相对路径；找不到文件时清掉标记，
+/// 只保留原预览。`inline` 为 true（导出）时用文件的完整内容替换预览正文。
+fn resolve_persisted_outputs(
+    detail: &mut ConversationDetail,
+    projects_dir: &Path,
+    session_file: &Path,
+    inline: bool,
+) {
+    for message in &mut detail.messages {
+        for block in &mut message.blocks {
+            let Some(raw) = block.persisted_output.take() else {
+                continue;
+            };
+            let Some((path, relative)) = persisted::resolve(&raw.path, projects_dir, session_file)
+            else {
+                continue;
+            };
+            let mut size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let mut inlined = false;
+            if inline {
+                if let Ok((text, _, file_size)) =
+                    persisted::read(projects_dir, &relative, EXPORT_PERSISTED_MAX_BYTES)
+                {
+                    block.text = Some(text);
+                    block.truncated = false;
+                    size = file_size;
+                    inlined = true;
+                }
+            }
+            block.persisted_output = Some(PersistedOutput {
+                path: relative,
+                size,
+                inlined,
+            });
+        }
     }
 }
 
@@ -370,13 +421,35 @@ async fn parse_detail(
     agent: Agent,
     file: String,
     block_limit: parser::BlockLimit,
+    projects_dir: PathBuf,
 ) -> Result<ConversationDetail, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        parse_detail_sync(agent, Path::new(&file), block_limit)
+        parse_detail_sync(agent, Path::new(&file), block_limit, &projects_dir)
     })
     .await
     .map_err(|error| error.to_string())?
     .ok_or_else(|| "对话文件解析失败".to_string())
+}
+
+/// 读取详情页里某个持久化的超大工具输出。`path` 是详情返回的相对路径，
+/// 后端再次校验它落在 projects 目录之内。
+#[tauri::command]
+pub async fn read_persisted_output(
+    path: String,
+    app: AppHandle,
+) -> Result<PersistedOutputText, String> {
+    let projects_dir = resolve_data_paths(&app)?.claude.projects;
+    tauri::async_runtime::spawn_blocking(move || {
+        persisted::read(&projects_dir, &path, DISPLAY_PERSISTED_MAX_BYTES).map(
+            |(text, truncated, size)| PersistedOutputText {
+                text,
+                truncated,
+                size,
+            },
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 /// 单个会话的完整对话详情
@@ -433,6 +506,7 @@ fn settings_view(s: &SettingsInput, config_path: &Path) -> Result<SettingsView, 
         history_file: s.history_file.clone(),
         projects_dir: s.projects_dir.clone(),
         sessions_dir: s.sessions_dir.clone(),
+        import_path_mappings: s.import_path_mappings.clone(),
         config_path: config_path.to_string_lossy().to_string(),
         resolved: ResolvedPaths {
             claude: ResolvedClaudePaths {
@@ -676,6 +750,7 @@ pub async fn export_sessions(
         jobs.push((session, file, title));
     }
     let total = jobs.len();
+    let projects_dir = resolve_data_paths(&app)?.claude.projects;
     let reporter = ThrottledEmitter::new(app.clone(), EXPORT_PROGRESS_EVENT);
     reporter.emit(ExportProgress { done: 0, total }, true);
 
@@ -684,7 +759,7 @@ pub async fn export_sessions(
         let parsed: Vec<Result<export::SessionExportItem, String>> = jobs
             .par_iter()
             .map(|(session, file, title)| {
-                let detail = parse_detail_sync(session.agent, Path::new(file), None);
+                let detail = parse_detail_sync(session.agent, Path::new(file), None, &projects_dir);
                 let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
                 reporter.emit(
                     ExportProgress {
@@ -762,6 +837,119 @@ pub async fn export_sessions(
         session_count,
         message_count,
         file_count: folder.files.len() + 1,
+    })
+}
+
+// ----------------------------- 导入 Claude Code 会话 -----------------------------
+
+/// 第一步（只读）：列出 zip 里的云端项目、会话数与映射建议。
+/// 建议来自设置里记住的映射，其次是本机已索引的同名 Claude 项目；索引不可用时没有建议。
+#[tauri::command]
+pub async fn inspect_session_import(
+    zip_path: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ImportInspection, String> {
+    let (settings, _) = load_settings(&app);
+    let candidates: Vec<(String, String)> = match ensure_index(&state, &app).await {
+        Ok(index) => index
+            .projects_for(AgentFilter::Claude)
+            .iter()
+            .map(|project| (project.name.clone(), project.path.clone()))
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        import::inspect(
+            Path::new(&zip_path),
+            &settings.import_path_mappings,
+            &candidates,
+        )
+    })
+    .await
+    .map_err(|error| format!("Import inspection task failed: {error}"))?
+}
+
+/// 第二步（只读）：按映射生成导入计划，逐会话给出新增 / 更新 / 跳过 / 冲突。
+#[tauri::command]
+pub async fn plan_session_import(
+    zip_path: String,
+    mappings: Vec<ProjectMapping>,
+    app: AppHandle,
+) -> Result<ImportPlan, String> {
+    let projects_dir = resolve_data_paths(&app)?.claude.projects;
+    tauri::async_runtime::spawn_blocking(move || {
+        import::plan(Path::new(&zip_path), &projects_dir, &mappings)
+    })
+    .await
+    .map_err(|error| format!("Import planning task failed: {error}"))?
+}
+
+/// 第三步：按计划与冲突决定写入 projects 目录，记住映射，然后增量重建索引。
+/// 写入前重新校验 zip 与计划一致；冲突缺少决定时不写任何文件。
+#[tauri::command]
+pub async fn apply_session_import(
+    zip_path: String,
+    mappings: Vec<ProjectMapping>,
+    decisions: Vec<ConflictDecision>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ImportResult, String> {
+    let projects_dir = resolve_data_paths(&app)?.claude.projects;
+    let mapping_copy = mappings.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        import::apply(
+            Path::new(&zip_path),
+            &projects_dir,
+            &mapping_copy,
+            &decisions,
+        )
+    })
+    .await
+    .map_err(|error| format!("Import task failed: {error}"))??;
+
+    // 记住这次确认的映射（归一化后的本机路径）：选了本机目录的写入，选了保持原路径的忘掉旧记录
+    let normalized = import::normalize_mappings(&mappings)?;
+    let (mut settings, _) = load_settings(&app);
+    let mut changed = false;
+    for mapping in &mappings {
+        let key = mapping
+            .cloud_cwd
+            .trim()
+            .trim_end_matches(['/', '\\'])
+            .to_string();
+        if key.is_empty() {
+            continue;
+        }
+        match normalized.get(&key) {
+            Some(local) => {
+                changed |= settings
+                    .import_path_mappings
+                    .insert(key, local.clone())
+                    .as_ref()
+                    != Some(local);
+            }
+            None => changed |= settings.import_path_mappings.remove(&key).is_some(),
+        }
+    }
+    if changed {
+        state::save_settings(&app, &settings)?;
+    }
+
+    let _build = state.build_lock.lock().await;
+    let index = build_index(&app, false).await?;
+    let meta = index_meta(&index);
+    *state.index.write().await = Some(Arc::new(index));
+    Ok(ImportResult {
+        added: outcome.added,
+        updated: outcome.updated,
+        skipped: outcome.skipped,
+        kept_local: outcome.kept_local,
+        overwritten: outcome.overwritten,
+        files_written: outcome.files_written,
+        skipped_entries: outcome.skipped_entries,
+        projects: outcome.projects,
+        index: meta,
     })
 }
 

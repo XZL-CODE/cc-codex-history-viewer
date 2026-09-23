@@ -513,7 +513,7 @@ fn resolve_missing_claude_projects(history: &[RawPrompt], conv: &mut [ConvFileRe
 
 /// Claude Code names each project directory by replacing every non-alphanumeric character of
 /// the cwd with `-`: `/Users/me/我的项目` becomes `-Users-me-----` and `C:\work` becomes `C--work`.
-fn encode_claude_project_dir(path: &str) -> String {
+pub(crate) fn encode_claude_project_dir(path: &str) -> String {
     path.chars()
         .map(|character| {
             if character.is_ascii_alphanumeric() {

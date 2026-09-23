@@ -9,11 +9,17 @@ import type {
   AgentFilter,
   ConversationDetail,
   ConversationExportResult,
+  ConflictDecision,
   ConversationSearchResponse,
   ExportParams,
   ExportResult,
+  ImportInspection,
+  ImportPlan,
+  ImportResult,
   IndexMeta,
+  PersistedOutputText,
   ProjectInfo,
+  ProjectMapping,
   PromptEntry,
   SearchResult,
   SessionRef,
@@ -155,6 +161,30 @@ export const api = {
       merge: p.merge,
       includeTools: p.includeTools,
       lang: p.lang,
+    }),
+
+  /** 读取详情里某个持久化的超大工具输出；path 是详情返回的相对路径，后端校验它在 projects 目录内 */
+  readPersistedOutput: (path: string) =>
+    invoke<PersistedOutputText>("read_persisted_output", { path }),
+
+  /** 导入第一步（只读）：列出 zip 里的云端项目、会话数与映射建议 */
+  inspectSessionImport: (zipPath: string) =>
+    invoke<ImportInspection>("inspect_session_import", { zipPath }),
+
+  /** 导入第二步（只读）：按映射生成计划，逐会话给出新增 / 更新 / 跳过 / 冲突 */
+  planSessionImport: (zipPath: string, mappings: ProjectMapping[]) =>
+    invoke<ImportPlan>("plan_session_import", { zipPath, mappings }),
+
+  /** 导入第三步：按计划与冲突决定写入 projects 目录，记住映射并增量重建索引 */
+  applySessionImport: (
+    zipPath: string,
+    mappings: ProjectMapping[],
+    decisions: ConflictDecision[]
+  ) =>
+    invoke<ImportResult>("apply_session_import", {
+      zipPath,
+      mappings,
+      decisions,
     }),
 
   getSettings: () => invoke<SettingsView>("get_settings"),
