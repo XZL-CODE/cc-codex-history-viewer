@@ -70,6 +70,11 @@ interface Store {
   openSettings: () => void;
   closeSettings: () => void;
 
+  /** 导入 Claude Code 会话弹窗 */
+  importOpen: boolean;
+  openImport: () => void;
+  closeImport: () => void;
+
   /** 索引构建进度；null 表示当前没有在构建 */
   indexProgress: IndexProgress | null;
   /** 手动刷新是否进行中（首次懒加载不算） */
@@ -142,6 +147,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     null
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(
     null
   );
@@ -251,6 +257,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const openImport = useCallback(() => setImportOpen(true), []);
+  const closeImport = useCallback(() => setImportOpen(false), []);
 
   const refreshIndex = useCallback(
     async (full = false) => {
@@ -303,6 +311,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       settingsOpen,
       openSettings,
       closeSettings,
+      importOpen,
+      openImport,
+      closeImport,
       indexProgress,
       refreshing,
       refreshIndex,
@@ -330,6 +341,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       settingsOpen,
       openSettings,
       closeSettings,
+      importOpen,
+      openImport,
+      closeImport,
       indexProgress,
       refreshing,
       refreshIndex,

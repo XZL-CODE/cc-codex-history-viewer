@@ -825,6 +825,25 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
             let t = b.text.as_deref().unwrap_or("");
             md.push_str(&format!("````\n{}\n````\n\n", t.trim()));
             push_truncated_note(md, b, lang);
+            // 持久化的超大输出：command 层找到文件时已把完整内容内联进正文，这里标注来源；
+            // 没找到时正文仍是原预览，不另加说明
+            if let Some(persisted) = b.persisted_output.as_ref().filter(|p| p.inlined) {
+                md.push_str(&format!(
+                    "_{}`{}`_\n\n",
+                    label("完整输出来自 ", "Full output from "),
+                    persisted.path
+                ));
+            }
+        }
+        "attachment" if include_tools => {
+            md.push_str(&format!(
+                "**{} · {}**\n\n",
+                label("📎 附件", "📎 Attachment"),
+                b.tool_name.as_deref().unwrap_or("file")
+            ));
+            let t = b.text.as_deref().unwrap_or("");
+            md.push_str(&format!("````\n{}\n````\n\n", t.trim()));
+            push_truncated_note(md, b, lang);
         }
         _ => {}
     }
@@ -921,7 +940,7 @@ pub fn filename_fragment(text: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ChatMessage;
+    use crate::models::{ChatMessage, PersistedOutput};
 
     fn mk(project: &str, ts: i64, text: &str, is_command: bool) -> PromptEntry {
         mk_agent(Agent::Claude, project, ts, text, is_command)
@@ -1074,6 +1093,7 @@ mod tests {
             tool_name: None,
             tool_input: None,
             truncated: false,
+            persisted_output: None,
         }
     }
 
@@ -1111,6 +1131,7 @@ mod tests {
                             tool_name: None,
                             tool_input: None,
                             truncated: false,
+                            persisted_output: None,
                         },
                         ContentBlock {
                             kind: "tool_use".into(),
@@ -1118,6 +1139,7 @@ mod tests {
                             tool_name: Some("Bash".into()),
                             tool_input: Some(serde_json::json!({"command": "ls"})),
                             truncated: false,
+                            persisted_output: None,
                         },
                     ],
                 },
@@ -1209,6 +1231,7 @@ mod tests {
                             tool_name: Some("Bash".into()),
                             tool_input: Some(serde_json::json!({"command": "ls"})),
                             truncated: false,
+                            persisted_output: None,
                         },
                         text_block(reply),
                     ],
@@ -1353,6 +1376,94 @@ mod tests {
         assert!(en.contains("_(content truncated)_"));
         detail.messages[1].blocks[1].truncated = false;
         assert!(!build_conversation_markdown(&detail, false, Lang::Zh).contains("截断"));
+    }
+
+    #[test]
+    fn export_notes_inlined_persisted_outputs_and_renders_attachments() {
+        let detail = ConversationDetail {
+            agent: Agent::Claude,
+            session_id: "sess-attach".into(),
+            project: "/synthetic/project".into(),
+            git_branch: None,
+            started_at: 1_700_000_000_000,
+            ended_at: 1_700_000_100_000,
+            cli_version: None,
+            source: Some("cli".into()),
+            models: vec![],
+            messages: vec![
+                ChatMessage {
+                    agent: Agent::Claude,
+                    uuid: "u1".into(),
+                    role: "user".into(),
+                    timestamp: 1_700_000_000_000,
+                    is_sidechain: false,
+                    blocks: vec![
+                        text_block("看看这个文件"),
+                        ContentBlock {
+                            kind: "attachment".into(),
+                            text: Some("附件正文".into()),
+                            tool_name: Some("/uploads/note.md".into()),
+                            tool_input: None,
+                            truncated: false,
+                            persisted_output: None,
+                        },
+                    ],
+                },
+                ChatMessage {
+                    agent: Agent::Claude,
+                    uuid: "u2".into(),
+                    role: "user".into(),
+                    timestamp: 1_700_000_050_000,
+                    is_sidechain: false,
+                    blocks: vec![
+                        ContentBlock {
+                            kind: "tool_result".into(),
+                            text: Some("full output body".into()),
+                            tool_name: Some("Bash".into()),
+                            tool_input: None,
+                            truncated: false,
+                            persisted_output: Some(PersistedOutput {
+                                path: "-p/sess/tool-results/a.txt".into(),
+                                size: 16,
+                                inlined: true,
+                            }),
+                        },
+                        ContentBlock {
+                            kind: "tool_result".into(),
+                            text: Some("<persisted-output> preview only".into()),
+                            tool_name: Some("Bash".into()),
+                            tool_input: None,
+                            truncated: false,
+                            persisted_output: Some(PersistedOutput {
+                                path: "-p/sess/tool-results/b.txt".into(),
+                                size: 99,
+                                inlined: false,
+                            }),
+                        },
+                    ],
+                },
+            ],
+            usage: SessionUsage::default(),
+        };
+
+        let with_tools = build_conversation_markdown(&detail, true, Lang::Zh);
+        assert!(with_tools.contains("**📎 附件 · /uploads/note.md**"));
+        assert!(with_tools.contains("附件正文"));
+        assert!(with_tools.contains("full output body"));
+        assert!(with_tools.contains("_完整输出来自 `-p/sess/tool-results/a.txt`_"));
+        assert!(
+            !with_tools.contains("b.txt"),
+            "unresolved outputs carry no note"
+        );
+
+        let english = build_conversation_markdown(&detail, true, Lang::En);
+        assert!(english.contains("**📎 Attachment · /uploads/note.md**"));
+        assert!(english.contains("_Full output from `-p/sess/tool-results/a.txt`_"));
+
+        let without_tools = build_conversation_markdown(&detail, false, Lang::Zh);
+        assert!(without_tools.contains("看看这个文件"));
+        assert!(!without_tools.contains("附件正文"));
+        assert!(!without_tools.contains("full output body"));
     }
 
     #[test]

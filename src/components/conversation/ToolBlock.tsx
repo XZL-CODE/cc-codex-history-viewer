@@ -7,11 +7,14 @@ import {
   Circle,
   CircleDot,
   CornerDownRight,
+  FileText,
+  Paperclip,
   Wrench,
 } from "lucide-react";
-import type { ContentBlock } from "@/lib/types";
+import type { ContentBlock, PersistedOutputText } from "@/lib/types";
+import { api, errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
-import { cn, pathBasename } from "@/lib/utils";
+import { cn, formatBytes, pathBasename } from "@/lib/utils";
 import { Collapsible } from "./Collapsible";
 import { DiffView } from "./DiffView";
 import { fencedCode, Markdown } from "./Markdown";
@@ -447,6 +450,88 @@ export function ToolUseBlock({
   );
 }
 
+/** 后端按需读取持久化输出的上限（与 commands.rs 的 DISPLAY_PERSISTED_MAX_BYTES 一致） */
+const PERSISTED_DISPLAY_LIMIT = 4 * 1024 * 1024;
+
+/**
+ * 持久化的超大工具输出：正文默认是 Claude Code 留下的预览，本机能找到文件时可以
+ * 按需读取完整输出替换显示；只在展示层处理，不改写会话文件。
+ */
+function PersistedOutputControls({
+  block,
+  full,
+  onLoaded,
+  onReset,
+}: {
+  block: ContentBlock;
+  full: PersistedOutputText | null;
+  onLoaded: (value: PersistedOutputText) => void;
+  onReset: () => void;
+}) {
+  const t = useT();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const persisted = block.persistedOutput;
+  if (!persisted) return null;
+
+  const load = async () => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      onLoaded(await api.readPersistedOutput(persisted.path));
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-3 py-1.5 text-[11px]">
+      {full ? (
+        <>
+          <span className="min-w-0 truncate text-muted" title={persisted.path}>
+            <FileText size={11} className="mr-1 inline-block align-[-1px]" />
+            {t("persistedOutputShown", { path: persisted.path })}
+          </span>
+          <button
+            type="button"
+            onClick={onReset}
+            className="shrink-0 text-accent hover:underline"
+          >
+            {t("persistedOutputPreview")}
+          </button>
+          {full.truncated && (
+            <span className="text-warning">
+              {t("persistedOutputTruncated", {
+                size: formatBytes(PERSISTED_DISPLAY_LIMIT),
+              })}
+            </span>
+          )}
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="flex items-center gap-1 font-medium text-accent hover:underline disabled:opacity-60"
+        >
+          <FileText size={11} />
+          {loading
+            ? t("persistedOutputLoading")
+            : t("persistedOutputView", { size: formatBytes(persisted.size) })}
+        </button>
+      )}
+      {error && (
+        <span className="text-danger">
+          {t("persistedOutputFailed", { error })}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function ToolResultBlock({
   block,
   regex,
@@ -455,8 +540,9 @@ export function ToolResultBlock({
   regex: RegExp | null;
 }) {
   const t = useT();
-  const text = block.text ?? "";
-  const preview = firstLine(text, 90);
+  const [full, setFull] = useState<PersistedOutputText | null>(null);
+  const text = full ? full.text : (block.text ?? "");
+  const preview = firstLine(block.text ?? "", 90);
   return (
     <Collapsible
       summary={
@@ -470,6 +556,53 @@ export function ToolResultBlock({
           {preview && (
             <span className="min-w-0 truncate font-normal text-muted">
               <MarkText text={preview} regex={regex} />
+            </span>
+          )}
+          {block.persistedOutput && (
+            <FileText size={11} className="shrink-0 text-accent" aria-hidden />
+          )}
+        </>
+      }
+    >
+      <PersistedOutputControls
+        block={block}
+        full={full}
+        onLoaded={setFull}
+        onReset={() => setFull(null)}
+      />
+      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11.5px] leading-relaxed text-foreground">
+        <MarkText text={text} regex={regex} />
+      </pre>
+      {block.truncated && !full && (
+        <p className="px-3 pb-2 text-[11px] text-warning">{t("blockTruncatedNote")}</p>
+      )}
+    </Collapsible>
+  );
+}
+
+/** @ 引用或上传的文件：折叠块显示「附件：文件名」，展开看内容 */
+export function AttachmentBlock({
+  block,
+  regex,
+}: {
+  block: ContentBlock;
+  regex: RegExp | null;
+}) {
+  const t = useT();
+  const text = block.text ?? "";
+  const name = block.toolName ? pathBasename(block.toolName) : "";
+  return (
+    <Collapsible
+      summary={
+        <>
+          <Paperclip size={12} className="shrink-0 text-muted" />
+          <span className="shrink-0 text-foreground">{t("attachmentLabel")}</span>
+          {name && (
+            <span
+              className="min-w-0 truncate font-normal text-muted"
+              title={block.toolName ?? undefined}
+            >
+              <MarkText text={name} regex={regex} />
             </span>
           )}
         </>

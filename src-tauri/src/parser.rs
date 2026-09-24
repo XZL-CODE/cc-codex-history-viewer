@@ -1,8 +1,10 @@
 //! JSONL 数据解析：history.jsonl 与 projects/**/*.jsonl。
 
 use crate::models::{
-    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, SessionUsage,
+    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, PersistedOutput,
+    SessionUsage,
 };
+use crate::persisted;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -576,9 +578,32 @@ pub fn parse_conversation_detail_with_limit(
                                 tool_name: None,
                                 tool_input: None,
                                 truncated: false,
+                                persisted_output: None,
                             }],
                         });
                     }
+                }
+            }
+            continue;
+        }
+        // @ 引用/上传的文件内容记录在 attachment 行里，紧跟在对应的用户消息之后：
+        // 并入上一条用户消息；前面不是用户消息时单独成条。其他 attachment（环境快照、
+        // 各种 reminder）不是对话内容，忽略。
+        if ltype == "attachment" {
+            if let Some(block) = attachment_block(line, block_limit) {
+                let sidechain = file_is_subagent || parsed.is_sidechain.unwrap_or(false);
+                match messages.last_mut() {
+                    Some(last) if last.role == "user" && last.is_sidechain == sidechain => {
+                        last.blocks.push(block);
+                    }
+                    _ => messages.push(ChatMessage {
+                        agent: Agent::Claude,
+                        uuid: parsed.uuid.unwrap_or_default(),
+                        role: "user".to_string(),
+                        timestamp: ts.unwrap_or(0),
+                        is_sidechain: sidechain,
+                        blocks: vec![block],
+                    }),
                 }
             }
             continue;
@@ -841,6 +866,7 @@ fn clipped_block(
         tool_name,
         tool_input: None,
         truncated,
+        persisted_output: None,
     }
 }
 
@@ -873,7 +899,12 @@ fn content_to_blocks(
                         }
                     }
                     "thinking" => {
-                        if let Some(t) = b.get("thinking").and_then(|v| v.as_str()) {
+                        // 只有 signature、正文为空的块（云端会话常见）没有可看的内容，不产生块
+                        if let Some(t) = b
+                            .get("thinking")
+                            .and_then(|v| v.as_str())
+                            .filter(|t| !t.trim().is_empty())
+                        {
                             blocks.push(clipped_block("thinking", t, None, limit));
                         }
                     }
@@ -892,6 +923,7 @@ fn content_to_blocks(
                             tool_name: Some(name),
                             tool_input: b.get("input").cloned(),
                             truncated: false,
+                            persisted_output: None,
                         });
                     }
                     "tool_result" => {
@@ -900,7 +932,16 @@ fn content_to_blocks(
                             .get("tool_use_id")
                             .and_then(|v| v.as_str())
                             .and_then(|id| tool_names.get(id).cloned());
-                        blocks.push(clipped_block("tool_result", &txt, tool_name, limit));
+                        let mut block = clipped_block("tool_result", &txt, tool_name, limit);
+                        // 超大输出被持久化到文件：先记下生成时的路径，command 层按本机
+                        // projects 目录重新定位；找不到时会被清掉，只保留原预览
+                        block.persisted_output =
+                            persisted::path_from_text(&txt).map(|path| PersistedOutput {
+                                path,
+                                size: 0,
+                                inlined: false,
+                            });
+                        blocks.push(block);
                     }
                     "image" => {
                         blocks.push(ContentBlock {
@@ -909,6 +950,7 @@ fn content_to_blocks(
                             tool_name: None,
                             tool_input: None,
                             truncated: false,
+                            persisted_output: None,
                         });
                     }
                     _ => {}
@@ -918,6 +960,53 @@ fn content_to_blocks(
         _ => {}
     }
     blocks
+}
+
+#[derive(Deserialize)]
+struct AttachmentLine {
+    attachment: Option<AttachmentBody>,
+}
+
+#[derive(Deserialize)]
+struct AttachmentBody {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    filename: Option<String>,
+    /// Read 工具的结果：当前版本是对象 {"type":"text","file":{"filePath":…,"content":…}}，
+    /// 也可能是同样内容的 JSON 字符串或纯文本
+    content: Option<serde_json::Value>,
+}
+
+/// Read 结果对象里的文件正文。
+fn attachment_file_content(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("file")?
+        .get("content")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// 把 `type=file` 的 attachment 行转成附件块：`tool_name` 是原始文件路径，正文是文件内容。
+/// 其他 attachment 类型返回 None。只在详情解析时调用，索引路径不解析 attachment。
+fn attachment_block(line: &str, limit: BlockLimit) -> Option<ContentBlock> {
+    let parsed: AttachmentLine = serde_json::from_str(line).ok()?;
+    let body = parsed.attachment?;
+    if body.kind.as_deref() != Some("file") {
+        return None;
+    }
+    let text = match body.content {
+        Some(serde_json::Value::String(raw)) => serde_json::from_str::<serde_json::Value>(&raw)
+            .ok()
+            .and_then(|value| attachment_file_content(&value))
+            .unwrap_or(raw),
+        Some(value) => attachment_file_content(&value).unwrap_or_default(),
+        None => String::new(),
+    };
+    if text.trim().is_empty() {
+        return None;
+    }
+    let filename = body.filename.filter(|name| !name.is_empty());
+    Some(clipped_block("attachment", &text, filename, limit))
 }
 
 /// 提取 tool_result 的可读文本
@@ -1197,5 +1286,139 @@ mod tests {
         // The tool_use block is never clipped on either path.
         assert_eq!(export.messages[1].blocks[1].kind, "tool_use");
         assert!(!display.messages[1].blocks[1].truncated);
+    }
+
+    #[test]
+    fn detail_hides_empty_thinking_and_records_persisted_outputs_and_file_attachments() {
+        let file_json = serde_json::json!({
+            "type": "text",
+            "file": {"filePath": "/root/.claude/uploads/s/note.md", "content": "# 上传的笔记\n正文", "numLines": 2}
+        })
+        .to_string();
+        let path = write_temp_conversation(
+            "attachments",
+            &[
+                json!({
+                    "type": "user",
+                    "uuid": "u1",
+                    "timestamp": "2026-09-22T07:22:15.169Z",
+                    "cwd": "/synthetic/project",
+                    "message": {"role": "user", "content": [{"type": "text", "text": "看看 @note.md"}]}
+                }),
+                json!({
+                    "type": "attachment",
+                    "uuid": "att-1",
+                    "parentUuid": "u1",
+                    "timestamp": "2026-09-22T07:22:15.300Z",
+                    "attachment": {"type": "file", "filename": "/root/.claude/uploads/s/note.md", "content": file_json}
+                }),
+                json!({
+                    "type": "attachment",
+                    "uuid": "att-2",
+                    "timestamp": "2026-09-22T07:22:15.301Z",
+                    "attachment": {"type": "environment", "snapshot": {"workingDirectory": "/synthetic/project"}}
+                }),
+                json!({
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "timestamp": "2026-09-22T07:22:20.000Z",
+                    "cwd": "/synthetic/project",
+                    "message": {
+                        "role": "assistant",
+                        "model": "claude-synthetic",
+                        "content": [
+                            {"type": "thinking", "thinking": "", "signature": "CAIS"},
+                            {"type": "thinking", "thinking": "real reasoning", "signature": "CAIS"},
+                            {"type": "tool_use", "id": "tool-1", "name": "Bash", "input": {"command": "cat big.txt"}}
+                        ]
+                    }
+                }),
+                json!({
+                    "type": "user",
+                    "uuid": "u2",
+                    "timestamp": "2026-09-22T07:22:21.000Z",
+                    "cwd": "/synthetic/project",
+                    "message": {"role": "user", "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "tool-1",
+                        "content": "<persisted-output>\nOutput too large (34.5KB). Full output saved to: /root/.claude/projects/-synthetic-project/s/tool-results/bk.txt\n\nPreview (first 2KB):\nline one"
+                    }]}
+                }),
+                json!({
+                    "type": "attachment",
+                    "uuid": "att-3",
+                    "timestamp": "2026-09-22T07:22:21.100Z",
+                    "attachment": {"type": "file", "filename": "/tmp/plain.txt", "content": "not json, raw text"}
+                }),
+                json!({
+                    "type": "attachment",
+                    "uuid": "att-4",
+                    "timestamp": "2026-09-22T07:22:21.200Z",
+                    "attachment": {
+                        "type": "file",
+                        "filename": "/root/.claude/uploads/s/mail.eml",
+                        "content": {"type": "text", "file": {"filePath": "/root/.claude/uploads/s/mail.eml", "content": "From: a@b\nSubject: hi", "numLines": 2}},
+                        "displayPath": "../../mail.eml"
+                    }
+                }),
+            ],
+        );
+        let detail = parse_conversation_detail(&path).unwrap();
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+        assert_eq!(
+            detail.messages.len(),
+            3,
+            "attachments merge into the preceding user message"
+        );
+        let first = &detail.messages[0];
+        assert_eq!(first.role, "user");
+        assert_eq!(first.blocks.len(), 2);
+        assert_eq!(first.blocks[1].kind, "attachment");
+        assert_eq!(
+            first.blocks[1].tool_name.as_deref(),
+            Some("/root/.claude/uploads/s/note.md")
+        );
+        assert_eq!(first.blocks[1].text.as_deref(), Some("# 上传的笔记\n正文"));
+
+        let assistant = &detail.messages[1];
+        let kinds: Vec<&str> = assistant.blocks.iter().map(|b| b.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            vec!["thinking", "tool_use"],
+            "the empty thinking block is dropped"
+        );
+        assert_eq!(assistant.blocks[0].text.as_deref(), Some("real reasoning"));
+
+        let result = &detail.messages[2];
+        assert_eq!(result.blocks[0].kind, "tool_result");
+        assert_eq!(
+            result.blocks[0]
+                .persisted_output
+                .as_ref()
+                .map(|p| p.path.as_str()),
+            Some("/root/.claude/projects/-synthetic-project/s/tool-results/bk.txt")
+        );
+        assert!(result.blocks[0]
+            .text
+            .as_deref()
+            .unwrap()
+            .starts_with("<persisted-output>"));
+        assert_eq!(result.blocks[1].kind, "attachment");
+        assert_eq!(result.blocks[1].text.as_deref(), Some("not json, raw text"));
+        assert_eq!(
+            result.blocks[1].tool_name.as_deref(),
+            Some("/tmp/plain.txt")
+        );
+        // 当前 Claude Code 写的是对象形式的 Read 结果
+        assert_eq!(result.blocks[2].kind, "attachment");
+        assert_eq!(
+            result.blocks[2].text.as_deref(),
+            Some("From: a@b\nSubject: hi")
+        );
+        assert_eq!(
+            result.blocks[2].tool_name.as_deref(),
+            Some("/root/.claude/uploads/s/mail.eml")
+        );
     }
 }

@@ -200,6 +200,34 @@ pub struct ContentBlock {
     /// True when `text` was cut at the display limit.
     #[serde(default)]
     pub truncated: bool,
+    /// Set on a `tool_result` whose full output Claude Code persisted to a file under the
+    /// projects directory; see [`PersistedOutput`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persisted_output: Option<PersistedOutput>,
+}
+
+/// Payload of `read_persisted_output`: the file's text, capped at the display limit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedOutputText {
+    pub text: String,
+    pub truncated: bool,
+    pub size: u64,
+}
+
+/// A tool result whose complete output lives in `projects/<dir>/<session>/tool-results/*.txt`.
+/// The parser records the absolute path written into the transcript; the command layer
+/// re-resolves it against the current projects directory and drops it when the file is absent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedOutput {
+    /// Path relative to the Claude projects directory, `/`-separated (after resolution).
+    pub path: String,
+    /// File size in bytes (0 until resolved).
+    pub size: u64,
+    /// True when `ContentBlock.text` was replaced by the file's full content (export path).
+    #[serde(default)]
+    pub inlined: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,6 +362,141 @@ pub struct SessionsExportResult {
     pub file_count: usize,
 }
 
+// ----------------------------- Session import -----------------------------
+
+/// One cloud project found in an import zip, keyed by the project's root `cwd`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProject {
+    /// Directory name under `projects/` inside the zip.
+    pub cloud_dir: String,
+    /// Root working directory recorded in the sessions (decodes to `cloud_dir`); falls back
+    /// to `cloud_dir` when no session line carries a cwd.
+    pub cloud_cwd: String,
+    pub session_count: usize,
+    /// Suggested local working directory: a remembered mapping, else a local Claude project
+    /// with the same folder name.
+    pub suggested_local: Option<String>,
+    /// `remembered` | `name` | null
+    pub suggestion_source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportInspection {
+    pub zip_path: String,
+    pub projects: Vec<ImportProject>,
+    pub session_count: usize,
+    /// Entries outside `projects/<dir>/` (or junk such as `.DS_Store`) that will be ignored.
+    pub skipped_entries: Vec<String>,
+}
+
+/// The user's mapping for one cloud project; `local_cwd` empty/null keeps the original path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMapping {
+    pub cloud_cwd: String,
+    #[serde(default)]
+    pub local_cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportAction {
+    /// The session does not exist locally.
+    Add,
+    /// The local transcript is a prefix of the imported one, or only side files are missing.
+    Update,
+    /// Identical transcript and side files.
+    SkipIdentical,
+    /// The imported transcript is an older snapshot (a prefix of the local one).
+    SkipOlder,
+    /// Neither side is a prefix of the other, or a same-named side file differs.
+    Conflict,
+}
+
+/// Line count and last record time of one side of a session, for the conflict dialog.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSide {
+    pub lines: usize,
+    /// Unix milliseconds of the last record carrying a timestamp; 0 when none.
+    pub last_timestamp: i64,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedSession {
+    pub session_id: String,
+    pub cloud_dir: String,
+    pub cloud_cwd: String,
+    /// Directory name the session will be written to under the local projects directory.
+    pub target_dir: String,
+    /// Working directory the session will carry locally (rewritten when mapped).
+    pub target_cwd: String,
+    /// First user prompt of the imported transcript, for recognition.
+    pub title: String,
+    pub action: ImportAction,
+    pub imported: SessionSide,
+    pub local: Option<SessionSide>,
+    /// Files in the side directory that will be written.
+    pub side_files: usize,
+    /// Directory name of another local project already holding a session with this ID.
+    pub existing_elsewhere: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPlanCounts {
+    pub add: usize,
+    pub update: usize,
+    pub skip: usize,
+    pub conflict: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPlan {
+    pub zip_path: String,
+    pub sessions: Vec<PlannedSession>,
+    pub counts: ImportPlanCounts,
+    pub skipped_entries: Vec<String>,
+}
+
+/// The user's choice for one conflicting session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictDecision {
+    pub cloud_dir: String,
+    pub session_id: String,
+    /// True keeps the local session untouched; false overwrites it with the imported one.
+    pub keep_local: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedProject {
+    pub path: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub added: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub kept_local: usize,
+    pub overwritten: usize,
+    /// Transcript and side files written in total.
+    pub files_written: usize,
+    pub skipped_entries: Vec<String>,
+    /// Local projects that received at least one written session.
+    pub projects: Vec<ImportedProject>,
+    pub index: IndexMeta,
+}
+
 // ----------------------------- Settings -----------------------------
 
 /// Old four-field Claude settings remain valid because every new field defaults to empty.
@@ -346,6 +509,9 @@ pub struct SettingsInput {
     pub history_file: String,
     pub projects_dir: String,
     pub sessions_dir: String,
+    /// Remembered import mappings: cloud root cwd (for example `/home/user/repo`) to the
+    /// local working directory it was imported as. Confirmed on every import.
+    pub import_path_mappings: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -356,6 +522,8 @@ pub struct SettingsView {
     pub history_file: String,
     pub projects_dir: String,
     pub sessions_dir: String,
+    #[serde(default)]
+    pub import_path_mappings: std::collections::BTreeMap<String, String>,
     pub config_path: String,
     pub resolved: ResolvedPaths,
 }
