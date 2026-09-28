@@ -1117,6 +1117,7 @@ mod tests {
                     timestamp: day_start_ms("2026-05-16").unwrap(),
                     is_sidechain: false,
                     blocks: vec![text_block("帮我重构")],
+                    usage: None,
                 },
                 ChatMessage {
                     agent: Agent::Claude,
@@ -1142,6 +1143,7 @@ mod tests {
                             persisted_output: None,
                         },
                     ],
+                    usage: None,
                 },
                 ChatMessage {
                     agent: Agent::Claude,
@@ -1150,9 +1152,11 @@ mod tests {
                     timestamp: day_start_ms("2026-05-16").unwrap() + 2_000,
                     is_sidechain: false,
                     blocks: vec![text_block("已完成")],
+                    usage: None,
                 },
             ],
             usage: crate::models::SessionUsage::default(),
+            usage_breakdown: crate::models::UsageBreakdown::default(),
         };
 
         // 不含工具：纯工具消息整条消失
@@ -1217,6 +1221,7 @@ mod tests {
                     timestamp: started_at,
                     is_sidechain: false,
                     blocks: vec![text_block(prompt)],
+                    usage: None,
                 },
                 ChatMessage {
                     agent,
@@ -1235,6 +1240,7 @@ mod tests {
                         },
                         text_block(reply),
                     ],
+                    usage: None,
                 },
             ],
             usage: crate::models::SessionUsage {
@@ -1242,6 +1248,7 @@ mod tests {
                 est_cost_usd: 0.5,
                 ..Default::default()
             },
+            usage_breakdown: crate::models::UsageBreakdown::default(),
         }
     }
 
@@ -1408,6 +1415,7 @@ mod tests {
                             persisted_output: None,
                         },
                     ],
+                    usage: None,
                 },
                 ChatMessage {
                     agent: Agent::Claude,
@@ -1441,9 +1449,11 @@ mod tests {
                             }),
                         },
                     ],
+                    usage: None,
                 },
             ],
             usage: SessionUsage::default(),
+            usage_breakdown: crate::models::UsageBreakdown::default(),
         };
 
         let with_tools = build_conversation_markdown(&detail, true, Lang::Zh);

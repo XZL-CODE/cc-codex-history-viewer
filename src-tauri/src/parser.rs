@@ -1,8 +1,8 @@
 //! JSONL 数据解析：history.jsonl 与 projects/**/*.jsonl。
 
 use crate::models::{
-    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, PersistedOutput,
-    SessionUsage,
+    Agent, ChatMessage, ContentBlock, ConversationDetail, MessageUsage, NormalizedUsage,
+    PersistedOutput, SessionUsage, UsageBreakdown,
 };
 use crate::persisted;
 use serde::{Deserialize, Serialize};
@@ -224,6 +224,13 @@ struct RawUsage {
     output_tokens: Option<u64>,
     cache_creation_input_tokens: Option<u64>,
     cache_read_input_tokens: Option<u64>,
+    /// 缓存写按 5 分钟 / 1 小时分档的拆分；旧记录没有这个对象
+    cache_creation: Option<RawCacheCreation>,
+}
+
+#[derive(Deserialize)]
+struct RawCacheCreation {
+    ephemeral_1h_input_tokens: Option<u64>,
 }
 
 /// ISO8601 字符串转毫秒时间戳
@@ -427,25 +434,33 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
     })
 }
 
-/// Extract normalized Claude usage from an assistant record.
-fn extract_usage_entry(
-    line: &ConvLine,
-    _session_id: &str,
-    _line_no: usize,
-    ts: Option<i64>,
-    project: &str,
-    seen: &mut HashSet<String>,
-) -> Option<UsageEntry> {
+/// One Claude API call as an assistant record describes it: model, normalized usage and the
+/// fingerprint the index and the detail view share (`UsageEntry.dedup_key` / `MessageUsage.call_key`).
+struct ClaudeCall {
+    model: String,
+    call_key: String,
+    usage: NormalizedUsage,
+}
+
+/// Read the call behind an assistant record; `None` for synthetic records and empty usage.
+fn claude_call_usage(line: &ConvLine, ts: Option<i64>) -> Option<ClaudeCall> {
     let msg = line.message.as_ref()?;
     let model = msg.model.clone().unwrap_or_default();
     if model.is_empty() || model == "<synthetic>" {
         return None;
     }
     let u = msg.usage.as_ref()?;
+    let cache_creation = u.cache_creation_input_tokens.unwrap_or(0);
     let usage = NormalizedUsage {
         uncached_input: u.input_tokens.unwrap_or(0),
         output: u.output_tokens.unwrap_or(0),
-        cache_creation: u.cache_creation_input_tokens.unwrap_or(0),
+        cache_creation,
+        cache_creation_1h: u
+            .cache_creation
+            .as_ref()
+            .and_then(|tiers| tiers.ephemeral_1h_input_tokens)
+            .unwrap_or(0)
+            .min(cache_creation),
         cache_read: u.cache_read_input_tokens.unwrap_or(0),
         reasoning_output: 0,
     };
@@ -460,7 +475,7 @@ fn extract_usage_entry(
         .filter(|s| !s.is_empty())
         .or_else(|| line.uuid.clone().filter(|s| !s.is_empty()))
         .or_else(|| line.request_id.clone().filter(|s| !s.is_empty()));
-    let dedup_key = stable_id
+    let call_key = stable_id
         .map(|id| format!("claude:id:{id}"))
         .unwrap_or_else(|| {
             let content = msg
@@ -481,16 +496,33 @@ fn extract_usage_entry(
                 ])
             )
         });
-    if !seen.insert(dedup_key.clone()) {
+    Some(ClaudeCall {
+        model,
+        call_key,
+        usage,
+    })
+}
+
+/// Extract normalized Claude usage from an assistant record, once per call.
+fn extract_usage_entry(
+    line: &ConvLine,
+    _session_id: &str,
+    _line_no: usize,
+    ts: Option<i64>,
+    project: &str,
+    seen: &mut HashSet<String>,
+) -> Option<UsageEntry> {
+    let call = claude_call_usage(line, ts)?;
+    if !seen.insert(call.call_key.clone()) {
         return None;
     }
     Some(UsageEntry {
         agent: Agent::Claude,
-        dedup_key,
-        model,
+        dedup_key: call.call_key,
+        model: call.model,
         timestamp: ts.unwrap_or(0),
         project: project.to_string(),
-        usage,
+        usage: call.usage,
     })
 }
 
@@ -517,6 +549,10 @@ pub fn parse_conversation_detail_with_limit(
     let mut models: HashSet<String> = HashSet::new();
     // tool_use id -> tool name, so每个 tool_result 都能标出产生它的工具
     let mut tool_names: HashMap<String, String> = HashMap::new();
+    // 一次 API 调用按内容块拆成多行（message.id 相同、usage 相同）：用量只挂在首行，
+    // 首行没有可显示的块时顺延到同一调用的下一行
+    let mut seen_calls: HashSet<String> = HashSet::new();
+    let mut pending_usage: Option<MessageUsage> = None;
 
     for bytes in reader.split(b'\n') {
         let bytes = match bytes {
@@ -580,6 +616,7 @@ pub fn parse_conversation_detail_with_limit(
                                 truncated: false,
                                 persisted_output: None,
                             }],
+                            usage: None,
                         });
                     }
                 }
@@ -603,6 +640,7 @@ pub fn parse_conversation_detail_with_limit(
                         timestamp: ts.unwrap_or(0),
                         is_sidechain: sidechain,
                         blocks: vec![block],
+                        usage: None,
                     }),
                 }
             }
@@ -622,11 +660,29 @@ pub fn parse_conversation_detail_with_limit(
         {
             models.insert(model.clone());
         }
+        if ltype == "assistant" {
+            if let Some(call) = claude_call_usage(&parsed, ts) {
+                if seen_calls.insert(call.call_key.clone()) {
+                    pending_usage = Some(MessageUsage {
+                        call_key: call.call_key,
+                        model: call.model,
+                        usage: call.usage,
+                        est_cost_usd: None,
+                        attributed: true,
+                    });
+                }
+            }
+        }
         let role = msg.role.clone().unwrap_or_else(|| ltype.to_string());
         let blocks = content_to_blocks(msg.content.as_ref(), &mut tool_names, block_limit);
         if blocks.is_empty() {
             continue;
         }
+        let usage = if role == "assistant" {
+            pending_usage.take()
+        } else {
+            None
+        };
         messages.push(ChatMessage {
             agent: Agent::Claude,
             uuid: parsed.uuid.unwrap_or_default(),
@@ -634,6 +690,7 @@ pub fn parse_conversation_detail_with_limit(
             timestamp: ts.unwrap_or(0),
             is_sidechain: file_is_subagent || parsed.is_sidechain.unwrap_or(false),
             blocks,
+            usage,
         });
     }
 
@@ -660,6 +717,7 @@ pub fn parse_conversation_detail_with_limit(
         },
         messages,
         usage: SessionUsage::default(),
+        usage_breakdown: UsageBreakdown::default(),
     })
 }
 
@@ -1207,6 +1265,102 @@ mod tests {
         let body: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
         std::fs::write(&path, body.join("\n")).unwrap();
         path
+    }
+
+    #[test]
+    fn detail_reads_cache_tiers_and_defers_usage_past_records_without_blocks() {
+        let tiered = json!({
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 1000,
+            "cache_read_input_tokens": 500,
+            "cache_creation": {"ephemeral_5m_input_tokens": 700, "ephemeral_1h_input_tokens": 300},
+            "output_tokens": 20
+        });
+        let path = write_temp_conversation(
+            "usage-tiers",
+            &[
+                json!({
+                    "type": "user",
+                    "uuid": "u1",
+                    "timestamp": "2026-07-14T10:00:00.000Z",
+                    "cwd": "/synthetic/project",
+                    "message": {"role": "user", "content": "hi"}
+                }),
+                // 调用首行只有一个空 thinking 块，展示层不产生消息
+                json!({
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "timestamp": "2026-07-14T10:00:01.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_t1",
+                        "model": "claude-opus-4-5-20251101",
+                        "usage": tiered,
+                        "content": [{"type": "thinking", "thinking": "", "signature": "x"}]
+                    }
+                }),
+                json!({
+                    "type": "assistant",
+                    "uuid": "a2",
+                    "timestamp": "2026-07-14T10:00:02.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_t1",
+                        "model": "claude-opus-4-5-20251101",
+                        "usage": tiered,
+                        "content": [{"type": "text", "text": "answer"}]
+                    }
+                }),
+                // 畸形数据：1h 档大于缓存写总量时按总量截断
+                json!({
+                    "type": "assistant",
+                    "uuid": "a3",
+                    "timestamp": "2026-07-14T10:00:03.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_t2",
+                        "model": "claude-opus-4-5-20251101",
+                        "usage": {
+                            "input_tokens": 1,
+                            "cache_creation_input_tokens": 5,
+                            "cache_creation": {"ephemeral_1h_input_tokens": 50},
+                            "output_tokens": 1
+                        },
+                        "content": [{"type": "text", "text": "more"}]
+                    }
+                }),
+            ],
+        );
+        let detail = parse_conversation_detail(&path).unwrap();
+        let file = parse_conversation_file(&path).unwrap();
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+        assert_eq!(
+            detail.messages.len(),
+            3,
+            "the empty-thinking record is dropped"
+        );
+        assert!(detail.messages[0].usage.is_none());
+        let first = detail.messages[1]
+            .usage
+            .as_ref()
+            .expect("usage moves on to the call's next displayable record");
+        assert_eq!(first.call_key, "claude:id:msg_t1");
+        assert_eq!(first.usage.cache_creation, 1_000);
+        assert_eq!(first.usage.cache_creation_1h, 300);
+        assert_eq!(first.usage.cache_creation_5m(), 700);
+        assert_eq!(first.usage.context_tokens(), 1_510);
+        let second = detail.messages[2].usage.as_ref().unwrap();
+        assert_eq!(second.call_key, "claude:id:msg_t2");
+        assert_eq!(
+            second.usage.cache_creation_1h, 5,
+            "clamped to the recorded total"
+        );
+
+        assert_eq!(file.usage_entries.len(), 2, "one index entry per call");
+        assert_eq!(file.usage_entries[0].dedup_key, "claude:id:msg_t1");
+        assert_eq!(file.usage_entries[0].usage.cache_creation_1h, 300);
+        assert_eq!(file.usage_entries[1].usage.cache_creation_1h, 5);
     }
 
     #[test]

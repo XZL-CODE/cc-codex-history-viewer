@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEDUP_WINDOW_MS: i64 = 5 * 60 * 1000;
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 6;
 
 pub struct AppIndex {
     pub prompts: Vec<PromptEntry>,
@@ -26,6 +26,8 @@ pub struct AppIndex {
     pub session_usage: HashMap<(Agent, String), SessionUsage>,
     /// Globally unique usage events (fork/resume copies removed), for on-demand range statistics.
     pub usage_events: Vec<UsageEntry>,
+    /// Which session owns each entry of `usage_events`; see [`attribute_session_usage`].
+    pub usage_ownership: UsageOwnership,
     /// CLI versions seen in Claude `sessions/*.json`, merged into every statistics view.
     pub claude_cli_versions: Vec<String>,
     projects_all: Vec<ProjectInfo>,
@@ -55,6 +57,65 @@ impl AppIndex {
             AgentFilter::Codex => &self.stats_codex,
             AgentFilter::All => &self.stats_all,
         }
+    }
+
+    /// Every call attributed to one session in `usage_events` order (by timestamp), each with
+    /// whether it came from a Claude sub-agent transcript. Adds up to `session_usage`.
+    pub fn session_calls(&self, agent: Agent, session_id: &str) -> Vec<(&UsageEntry, bool)> {
+        self.usage_ownership
+            .calls(&self.usage_events, agent, session_id)
+    }
+}
+
+/// Owner of every entry in `AppIndex::usage_events`, built by [`attribute_session_usage`].
+#[derive(Default)]
+pub struct UsageOwnership {
+    /// Parallel to `usage_events`: index into `sessions`.
+    owner: Vec<u32>,
+    /// Parallel to `usage_events`: the event came from a Claude sub-agent transcript.
+    subagent: Vec<bool>,
+    sessions: Vec<(Agent, String)>,
+    session_slots: HashMap<(Agent, String), u32>,
+}
+
+impl UsageOwnership {
+    fn new(events: usize) -> Self {
+        Self {
+            owner: vec![u32::MAX; events],
+            subagent: vec![false; events],
+            sessions: Vec::new(),
+            session_slots: HashMap::new(),
+        }
+    }
+
+    fn slot(&mut self, agent: Agent, session_id: &str) -> u32 {
+        let key = (agent, session_id.to_string());
+        if let Some(slot) = self.session_slots.get(&key) {
+            return *slot;
+        }
+        let slot = self.sessions.len() as u32;
+        self.sessions.push(key.clone());
+        self.session_slots.insert(key, slot);
+        slot
+    }
+
+    /// The entries of `events` (the list this ownership was built for) one session owns, in
+    /// list order, each with its sub-agent flag.
+    pub fn calls<'a>(
+        &self,
+        events: &'a [UsageEntry],
+        agent: Agent,
+        session_id: &str,
+    ) -> Vec<(&'a UsageEntry, bool)> {
+        let Some(slot) = self.session_slots.get(&(agent, session_id.to_string())) else {
+            return Vec::new();
+        };
+        self.owner
+            .iter()
+            .enumerate()
+            .filter(|(_, owner)| *owner == slot)
+            .filter_map(|(index, _)| events.get(index).map(|event| (event, self.subagent[index])))
+            .collect()
     }
 }
 
@@ -394,7 +455,8 @@ fn assemble_index(
 
     let mut prompts = merge_prompts(histories, &conv);
     let winners = session_winners(paths, &conv);
-    let session_usage = attribute_session_usage(&conv);
+    let usage_events = collect_unique_events(&conv);
+    let (session_usage, usage_ownership) = attribute_session_usage(&conv, &usage_events);
     let sessions = build_sessions(&winners, &session_usage);
     let session_files = winners
         .iter()
@@ -420,7 +482,6 @@ fn assemble_index(
     let projects_claude = aggregate_projects(&prompts, &sessions, AgentFilter::Claude);
     let projects_codex = aggregate_projects(&prompts, &sessions, AgentFilter::Codex);
     let extra_claude_versions = collect_claude_session_versions(&paths.claude.sessions);
-    let usage_events = collect_unique_events(&conv);
     let stats_all = compute_stats(
         &prompts,
         &sessions,
@@ -452,6 +513,7 @@ fn assemble_index(
         session_files,
         session_usage,
         usage_events,
+        usage_ownership,
         claude_cli_versions: extra_claude_versions,
         projects_all,
         projects_claude,
@@ -1000,6 +1062,7 @@ impl UsageAggregate {
             uncached_input: self.usage.uncached_input,
             cache_read: self.usage.cache_read,
             cache_creation: self.usage.cache_creation,
+            cache_creation_1h: self.usage.cache_creation_1h,
             output: self.usage.output,
             reasoning_output: self.usage.reasoning_output,
             total_tokens_including_cache: self.usage.total_tokens_including_cache(),
@@ -1037,7 +1100,17 @@ fn owner_session_id(result: &ConvFileResult) -> String {
 
 /// Attribute every unique usage event to exactly one session. Files are visited from the
 /// earliest session onwards, so events copied into a later fork/resume stay with the original.
-fn attribute_session_usage(conv: &[ConvFileResult]) -> HashMap<(Agent, String), SessionUsage> {
+/// `events` is the deduplicated list from [`collect_unique_events`]; the returned ownership is
+/// parallel to it, so the detail view can list exactly the calls a session's usage sums.
+fn attribute_session_usage(
+    conv: &[ConvFileResult],
+    events: &[UsageEntry],
+) -> (HashMap<(Agent, String), SessionUsage>, UsageOwnership) {
+    let positions: HashMap<(Agent, &str), usize> = events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| ((event.agent, event.dedup_key.as_str()), index))
+        .collect();
     let mut ordered: Vec<&ConvFileResult> = conv.iter().collect();
     ordered.sort_by(|left, right| {
         left.started_at
@@ -1045,14 +1118,20 @@ fn attribute_session_usage(conv: &[ConvFileResult]) -> HashMap<(Agent, String), 
             .then_with(|| left.agent.cmp(&right.agent))
             .then_with(|| left.path.cmp(&right.path))
     });
-    let mut seen: HashSet<(Agent, &str)> = HashSet::new();
+    let mut ownership = UsageOwnership::new(events.len());
     let mut aggregates: HashMap<(Agent, String), UsageAggregate> = HashMap::new();
     for result in ordered {
         let owner = owner_session_id(result);
+        let slot = ownership.slot(result.agent, &owner);
         for event in &result.usage_entries {
-            if !seen.insert((event.agent, event.dedup_key.as_str())) {
+            let Some(&index) = positions.get(&(event.agent, event.dedup_key.as_str())) else {
+                continue;
+            };
+            if ownership.owner[index] != u32::MAX {
                 continue;
             }
+            ownership.owner[index] = slot;
+            ownership.subagent[index] = result.is_subagent;
             let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
             aggregates
                 .entry((result.agent, owner.clone()))
@@ -1060,10 +1139,11 @@ fn attribute_session_usage(conv: &[ConvFileResult]) -> HashMap<(Agent, String), 
                 .add(event, cost);
         }
     }
-    aggregates
+    let usage = aggregates
         .into_iter()
         .map(|(key, aggregate)| (key, aggregate.into_session_usage()))
-        .collect()
+        .collect();
+    (usage, ownership)
 }
 
 /// Every usage event across all files, sorted deterministically and deduplicated by
@@ -1143,6 +1223,7 @@ fn compute_usage(
             uncached_input: aggregate.usage.uncached_input,
             cache_read: aggregate.usage.cache_read,
             cache_creation: aggregate.usage.cache_creation,
+            cache_creation_1h: aggregate.usage.cache_creation_1h,
             output: aggregate.usage.output,
             reasoning_output: aggregate.usage.reasoning_output,
             total_tokens_including_cache: aggregate.usage.total_tokens_including_cache(),
@@ -1171,6 +1252,7 @@ fn compute_usage(
             uncached_input: aggregate.usage.uncached_input,
             cache_read: aggregate.usage.cache_read,
             cache_creation: aggregate.usage.cache_creation,
+            cache_creation_1h: aggregate.usage.cache_creation_1h,
             output: aggregate.usage.output,
             reasoning_output: aggregate.usage.reasoning_output,
             total_tokens_including_cache: aggregate.usage.total_tokens_including_cache(),
@@ -1192,6 +1274,7 @@ fn compute_usage(
                 uncached_input: aggregate.usage.uncached_input,
                 cache_read: aggregate.usage.cache_read,
                 cache_creation: aggregate.usage.cache_creation,
+                cache_creation_1h: aggregate.usage.cache_creation_1h,
                 output: aggregate.usage.output,
                 reasoning_output: aggregate.usage.reasoning_output,
                 total_tokens_including_cache: aggregate.usage.total_tokens_including_cache(),
@@ -1217,6 +1300,7 @@ fn compute_usage(
         uncached_input: total.uncached_input,
         cache_read: total.cache_read,
         cache_creation: total.cache_creation,
+        cache_creation_1h: total.cache_creation_1h,
         output: total.output,
         reasoning_output: total.reasoning_output,
         total_tokens_including_cache: total.total_tokens_including_cache(),
@@ -1467,6 +1551,7 @@ mod tests {
                         uncached_input: 100,
                         cache_read: 50,
                         cache_creation: 10,
+                        cache_creation_1h: 0,
                         output: 20,
                         reasoning_output: 0,
                     },
@@ -1499,7 +1584,36 @@ mod tests {
             &["k4"],
         );
         let conv = vec![resumed, subagent, original];
-        let usage = attribute_session_usage(&conv);
+        let events = collect_unique_events(&conv);
+        let (usage, ownership) = attribute_session_usage(&conv, &events);
+
+        let keys = |session: &str| -> Vec<(String, bool)> {
+            ownership
+                .calls(&events, Agent::Claude, session)
+                .into_iter()
+                .map(|(event, subagent)| (event.dedup_key.clone(), subagent))
+                .collect()
+        };
+        assert_eq!(
+            keys("orig"),
+            vec![
+                ("k1".to_string(), false),
+                ("k2".to_string(), false),
+                ("k4".to_string(), true)
+            ],
+            "the original keeps its calls and gains the sub-agent's, flagged"
+        );
+        assert_eq!(keys("resumed"), vec![("k3".to_string(), false)]);
+        assert!(
+            keys("agent-1").is_empty(),
+            "sub-agents own nothing themselves"
+        );
+        assert!(keys("missing").is_empty());
+        assert_eq!(
+            keys("orig").len() + keys("resumed").len(),
+            events.len(),
+            "every unique event has exactly one owner"
+        );
 
         let orig = &usage[&(Agent::Claude, "orig".to_string())];
         assert_eq!(orig.assistant_messages, 3, "k1, k2 and the sub-agent's k4");
@@ -1510,7 +1624,7 @@ mod tests {
         assert_eq!(resumed.assistant_messages, 1, "only the new k3 call");
         assert!(!usage.contains_key(&(Agent::Claude, "agent-1".to_string())));
 
-        let global = compute_usage(&collect_unique_events(&conv), AgentFilter::All, None);
+        let global = compute_usage(&events, AgentFilter::All, None);
         let session_sum: u64 = usage
             .values()
             .map(|entry| entry.total_tokens_including_cache)

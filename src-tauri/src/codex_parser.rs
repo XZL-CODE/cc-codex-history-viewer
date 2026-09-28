@@ -1,7 +1,8 @@
 //! Streaming parser adapter for OpenAI Codex history and rollout JSONL files.
 
 use crate::models::{
-    Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage, SessionUsage,
+    Agent, ChatMessage, ContentBlock, ConversationDetail, MessageUsage, NormalizedUsage,
+    SessionUsage, UsageBreakdown,
 };
 use crate::parser::{
     clip_to, for_each_jsonl_line, stable_hash, BlockLimit, ConvFileResult, RawPrompt, UsageEntry,
@@ -54,6 +55,9 @@ struct RolloutAccumulator {
     legacy_prompts: Vec<PendingPrompt>,
     usage_entries: Vec<UsageEntry>,
     seen_usage: HashSet<String>,
+    /// Detail only: each `token_count` with the line it appeared on, to land on the assistant
+    /// message that precedes it.
+    pending_usages: Vec<(usize, MessageUsage)>,
     response_assistant_count: usize,
     response_assistant_texts: HashSet<u64>,
     event_assistant_texts: Vec<u64>,
@@ -84,6 +88,7 @@ impl RolloutAccumulator {
             legacy_prompts: Vec::new(),
             usage_entries: Vec::new(),
             seen_usage: HashSet::new(),
+            pending_usages: Vec::new(),
             response_assistant_count: 0,
             response_assistant_texts: HashSet::new(),
             event_assistant_texts: Vec::new(),
@@ -200,7 +205,7 @@ impl RolloutAccumulator {
                     self.current_turn_id = Some(turn_id);
                 }
             }
-            "token_count" => self.process_token_count(payload, raw_timestamp, timestamp),
+            "token_count" => self.process_token_count(line_no, payload, raw_timestamp, timestamp),
             _ => {}
         }
     }
@@ -263,6 +268,7 @@ impl RolloutAccumulator {
 
     fn process_token_count(
         &mut self,
+        line_no: usize,
         payload: &Value,
         raw_timestamp: Option<&Value>,
         timestamp: Option<i64>,
@@ -284,6 +290,7 @@ impl RolloutAccumulator {
             uncached_input: input - cached,
             cache_read: cached,
             cache_creation: 0,
+            cache_creation_1h: 0,
             output,
             reasoning_output,
         };
@@ -316,6 +323,18 @@ impl RolloutAccumulator {
         );
         if !self.seen_usage.insert(dedup_key.clone()) {
             return;
+        }
+        if self.collect_detail {
+            self.pending_usages.push((
+                line_no,
+                MessageUsage {
+                    call_key: dedup_key.clone(),
+                    model: model.clone(),
+                    usage,
+                    est_cost_usd: None,
+                    attributed: true,
+                },
+            ));
         }
         self.usage_entries.push(UsageEntry {
             agent: Agent::Codex,
@@ -642,6 +661,7 @@ impl RolloutAccumulator {
                 }
             }
             detail_messages.sort_by_key(|pending| pending.line_no);
+            attach_token_counts(&mut detail_messages, self.pending_usages);
             if primary.is_subagent {
                 for pending in &mut detail_messages {
                     pending.message.is_sidechain = true;
@@ -749,6 +769,7 @@ pub fn parse_rollout_detail_with_limit(
         models: result.models,
         messages,
         usage: SessionUsage::default(),
+        usage_breakdown: UsageBreakdown::default(),
     })
 }
 
@@ -778,6 +799,33 @@ fn chat_message(
         timestamp,
         is_sidechain: false,
         blocks,
+        usage: None,
+    }
+}
+
+/// A `token_count` event follows the model response it measures, so each one lands on the
+/// nearest earlier message the model produced (text, thinking or a tool call; tool outputs are
+/// assistant-role records too but are not model output). A message keeps the first count it
+/// receives; further counts without a message of their own stay in the index only.
+fn attach_token_counts(messages: &mut [PendingMessage], usages: Vec<(usize, MessageUsage)>) {
+    let mut cursor = 0usize;
+    for (line_no, usage) in usages {
+        while cursor < messages.len() && messages[cursor].line_no < line_no {
+            cursor += 1;
+        }
+        let Some(target) = messages[..cursor].iter_mut().rev().find(|pending| {
+            pending.message.role == "assistant"
+                && pending
+                    .message
+                    .blocks
+                    .iter()
+                    .any(|block| block.kind != "tool_result")
+        }) else {
+            continue;
+        };
+        if target.message.usage.is_none() {
+            target.message.usage = Some(usage);
+        }
     }
 }
 
@@ -1153,11 +1201,48 @@ mod tests {
                 uncached_input: 60,
                 cache_read: 40,
                 cache_creation: 0,
+                cache_creation_1h: 0,
                 output: 20,
                 reasoning_output: 5,
             }
         );
         assert_eq!(result.usage_entries[1].model, "gpt-codex-b");
+    }
+
+    #[test]
+    fn extra_token_counts_stay_in_the_index_when_no_assistant_message_precedes_them() {
+        const ID: &str = "12121212-3434-5656-7878-909090909090";
+        let file = TestFile::new(
+            &format!("rollout-2026-01-03T00-00-00-{ID}"),
+            &format!(
+                concat!(
+                    "{{\"timestamp\":\"2026-01-03T00:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/synthetic/main\",\"source\":\"cli\"}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:01.000Z\",\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"turn-1\",\"model\":\"gpt-codex-a\"}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:02.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"last_token_usage\":{{\"input_tokens\":30,\"cached_input_tokens\":0,\"output_tokens\":3}}}}}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"prompt\"}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:04.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"agent_message\",\"message\":\"reply\"}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:05.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"last_token_usage\":{{\"input_tokens\":100,\"cached_input_tokens\":40,\"output_tokens\":20}}}}}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:06.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"last_token_usage\":{{\"input_tokens\":10,\"cached_input_tokens\":2,\"output_tokens\":4}}}}}}}}\n"
+                ),
+                id = ID
+            ),
+        );
+        let result = parse_rollout_file(&file.0).unwrap();
+        assert_eq!(result.usage_entries.len(), 3, "the index keeps every count");
+        let detail = parse_rollout_detail(&file.0).unwrap();
+        let carried: Vec<&ChatMessage> = detail
+            .messages
+            .iter()
+            .filter(|message| message.usage.is_some())
+            .collect();
+        assert_eq!(carried.len(), 1);
+        assert_eq!(carried[0].role, "assistant");
+        let usage = carried[0].usage.as_ref().unwrap();
+        assert_eq!(
+            usage.call_key, result.usage_entries[1].dedup_key,
+            "the reply keeps the first count after it; the leading and trailing counts have no message"
+        );
+        assert_eq!(usage.usage.uncached_input, 60);
     }
 
     #[test]
@@ -1285,6 +1370,7 @@ mod tests {
                 uncached_input: 600,
                 cache_read: 400,
                 cache_creation: 0,
+                cache_creation_1h: 0,
                 output: 200,
                 reasoning_output: 50,
             }
@@ -1295,6 +1381,28 @@ mod tests {
         );
 
         let detail = parse_rollout_detail(&path).unwrap();
+        let carried: Vec<&ChatMessage> = detail
+            .messages
+            .iter()
+            .filter(|message| message.usage.is_some())
+            .collect();
+        assert_eq!(
+            carried.len(),
+            2,
+            "each token_count lands on the assistant message before it"
+        );
+        for (message, entry) in carried.iter().zip(&result.usage_entries) {
+            let usage = message.usage.as_ref().unwrap();
+            assert_eq!(message.role, "assistant");
+            assert_eq!(usage.call_key, entry.dedup_key);
+            assert_eq!(usage.model, entry.model);
+            assert_eq!(usage.usage, entry.usage);
+            assert!(usage.est_cost_usd.is_none());
+        }
+        assert_eq!(
+            carried[0].blocks[0].kind, "tool_use",
+            "the count follows the tool call that ended the model's turn"
+        );
         let tool_names: HashSet<&str> = detail
             .messages
             .iter()

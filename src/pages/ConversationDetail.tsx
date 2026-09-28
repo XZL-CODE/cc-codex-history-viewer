@@ -30,8 +30,6 @@ import {
   encodePath,
   formatDuration,
   formatNumber,
-  formatTokens,
-  formatUsageCost,
   isMac,
   pathBasename,
   prettyPath,
@@ -49,6 +47,7 @@ import {
   type RenderMode,
 } from "@/components/conversation/MessageBubble";
 import { buildOutline, Outline } from "@/components/conversation/Outline";
+import { UsagePanel } from "@/components/conversation/UsagePanel";
 
 const BATCH_SIZE = 60;
 const RENDER_MODE_KEY = "cchv-md-render";
@@ -252,6 +251,14 @@ export function ConversationDetail() {
   );
 
   const outline = useMemo(() => buildOutline(messages), [messages]);
+  // 调用指纹 → 消息下标：用量面板的图表点击后跳到承载该次调用的消息
+  const callIndexByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    messages.forEach((message, index) => {
+      if (message.usage) map.set(message.usage.callKey, index);
+    });
+    return map;
+  }, [messages]);
 
   // 大纲跟随滚动：视口内最靠上的用户轮次为当前轮次；没有用户轮次在视口内时沿用上一个
   const [activeTurn, setActiveTurn] = useState<number | null>(null);
@@ -494,21 +501,16 @@ export function ConversationDetail() {
                   })}
                 </span>
               )}
-              {data.usage.totalTokensIncludingCache > 0 && (
-                <span
-                  title={t("tokenTotalSuffix", {
-                    value: formatNumber(data.usage.totalTokensIncludingCache),
-                  })}
-                >
-                  ·{" "}
-                  {t("conversationUsage", {
-                    tokens: formatTokens(data.usage.totalTokensIncludingCache),
-                    cost: formatUsageCost(data.usage),
-                    messages: formatNumber(data.usage.assistantMessages),
-                  })}
-                </span>
-              )}
             </div>
+
+            <UsagePanel
+              agent={data.agent}
+              usage={data.usage}
+              breakdown={data.usageBreakdown}
+              turns={outline.length}
+              callIndexByKey={callIndexByKey}
+              onJump={jumpTo}
+            />
           </div>
 
           <div className="mb-3 flex flex-wrap items-center gap-2">

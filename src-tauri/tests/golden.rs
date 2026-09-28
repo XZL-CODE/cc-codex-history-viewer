@@ -136,4 +136,44 @@ fn session_detail_golden() {
 
     // sidechain 标记保留
     assert!(d.messages[7].is_sidechain);
+
+    // 用量挂在每次调用的首条记录上：msg_001 拆成 a-1 / a-1b 两行，只有 a-1 带用量
+    let first_call = d.messages[1].usage.as_ref().expect("a-1 carries msg_001");
+    assert_eq!(first_call.call_key, "claude:id:msg_001");
+    assert_eq!(first_call.model, "claude-sonnet-4-5-20250929");
+    assert_eq!(first_call.usage.uncached_input, 100);
+    assert_eq!(first_call.usage.cache_read, 1_000);
+    assert_eq!(first_call.usage.cache_creation, 50);
+    assert_eq!(first_call.usage.cache_creation_1h, 0);
+    assert_eq!(first_call.usage.output, 200);
+    assert!(first_call.est_cost_usd.is_none(), "the parser never prices");
+    assert!(
+        first_call.attributed,
+        "attribution is decided later by the index"
+    );
+    assert!(d.messages[2].usage.is_none(), "a-1b repeats msg_001");
+    assert!(d.messages[3].usage.is_none(), "tool results carry no usage");
+    assert_eq!(
+        d.messages[4].usage.as_ref().map(|u| u.call_key.as_str()),
+        Some("claude:id:msg_002")
+    );
+    assert_eq!(
+        d.messages[8].usage.as_ref().map(|u| u.usage.output),
+        Some(5),
+        "sidechain calls keep their usage"
+    );
+    // 详情与索引对同一次调用算出同一个指纹
+    let detail_keys: Vec<&str> = d
+        .messages
+        .iter()
+        .filter_map(|m| m.usage.as_ref())
+        .map(|u| u.call_key.as_str())
+        .collect();
+    let index_keys: Vec<String> = parser::parse_conversation_file(&path)
+        .unwrap()
+        .usage_entries
+        .into_iter()
+        .map(|e| e.dedup_key)
+        .collect();
+    assert_eq!(detail_keys, index_keys);
 }

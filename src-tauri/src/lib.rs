@@ -10,6 +10,7 @@ pub mod parser;
 pub mod persisted;
 pub mod pricing;
 pub mod state;
+pub mod usage_detail;
 
 use state::AppState;
 

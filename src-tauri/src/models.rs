@@ -131,6 +131,7 @@ pub struct SessionUsage {
     pub uncached_input: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    pub cache_creation_1h: u64,
     pub output: u64,
     pub reasoning_output: u64,
     pub total_tokens_including_cache: u64,
@@ -175,6 +176,9 @@ pub struct ConversationDetail {
     /// Filled from the index after parsing; parsers leave it at the default.
     #[serde(default)]
     pub usage: SessionUsage,
+    /// Per-call and per-model split of `usage`, filled with it; see [`UsageBreakdown`].
+    #[serde(default)]
+    pub usage_breakdown: UsageBreakdown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +191,10 @@ pub struct ChatMessage {
     pub timestamp: i64,
     pub is_sidechain: bool,
     pub blocks: Vec<ContentBlock>,
+    /// Usage of the API call this record carries; see [`MessageUsage`]. Only assistant messages
+    /// have it, and only the first record of a call that spans several records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<MessageUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -561,13 +569,18 @@ pub struct ResolvedCodexPaths {
 
 // ----------------------------- Token usage -----------------------------
 
-/// Product-neutral token accounting. `reasoning_output` is a subset of `output`.
+/// Product-neutral token accounting. `reasoning_output` is a subset of `output` and
+/// `cache_creation_1h` a subset of `cache_creation`; neither is added to a total twice.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizedUsage {
     pub uncached_input: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    /// Cache writes billed at the 1-hour tier (Claude `cache_creation.ephemeral_1h_input_tokens`);
+    /// the rest of `cache_creation` is the 5-minute tier. Always 0 for Codex.
+    #[serde(default)]
+    pub cache_creation_1h: u64,
     pub output: u64,
     pub reasoning_output: u64,
 }
@@ -578,6 +591,18 @@ impl NormalizedUsage {
             .saturating_add(self.cache_read)
             .saturating_add(self.cache_creation)
             .saturating_add(self.output)
+    }
+
+    /// Prompt size of the call: every input token, cached or not.
+    pub const fn context_tokens(self) -> u64 {
+        self.uncached_input
+            .saturating_add(self.cache_read)
+            .saturating_add(self.cache_creation)
+    }
+
+    /// Cache writes billed at the 5-minute tier.
+    pub const fn cache_creation_5m(self) -> u64 {
+        self.cache_creation.saturating_sub(self.cache_creation_1h)
     }
 
     pub const fn cache_hit_rate(self) -> Option<f64> {
@@ -593,9 +618,99 @@ impl NormalizedUsage {
         self.uncached_input = self.uncached_input.saturating_add(other.uncached_input);
         self.cache_read = self.cache_read.saturating_add(other.cache_read);
         self.cache_creation = self.cache_creation.saturating_add(other.cache_creation);
+        self.cache_creation_1h = self
+            .cache_creation_1h
+            .saturating_add(other.cache_creation_1h);
         self.output = self.output.saturating_add(other.output);
         self.reasoning_output = self.reasoning_output.saturating_add(other.reasoning_output);
     }
+}
+
+/// API-equivalent cost of one call or of a sum of calls, split the way the price list bills it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostParts {
+    pub uncached_input: f64,
+    pub cache_read: f64,
+    pub cache_creation: f64,
+    pub output: f64,
+}
+
+impl CostParts {
+    pub fn total(self) -> f64 {
+        self.uncached_input + self.cache_read + self.cache_creation + self.output
+    }
+
+    pub fn add_assign(&mut self, other: Self) {
+        self.uncached_input += other.uncached_input;
+        self.cache_read += other.cache_read;
+        self.cache_creation += other.cache_creation;
+        self.output += other.output;
+    }
+}
+
+/// Usage of the API call a transcript record carries. A Claude call is written as one record per
+/// content block, all repeating the same `message.id` and usage, so only its first record gets
+/// this; a Codex `token_count` event lands on the assistant message that precedes it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageUsage {
+    /// Fingerprint shared with the index (`UsageEntry.dedup_key`), so the call can be matched
+    /// against the session's attributed calls.
+    pub call_key: String,
+    pub model: String,
+    #[serde(flatten)]
+    pub usage: NormalizedUsage,
+    /// `None` when the model has no known pricing.
+    pub est_cost_usd: Option<f64>,
+    /// False when the index attributes this call to another session: a fork/resume copied it
+    /// here, and it is counted in the session that made it.
+    pub attributed: bool,
+}
+
+/// One API call the index attributes to the session, for the detail view's timeline. Claude
+/// sub-agent calls come from `<session>/subagents/*.jsonl` and have no message in the transcript.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageCall {
+    pub call_key: String,
+    pub timestamp: i64,
+    pub model: String,
+    #[serde(flatten)]
+    pub usage: NormalizedUsage,
+    pub est_cost_usd: Option<f64>,
+    pub subagent: bool,
+}
+
+/// The session's attributed calls split by model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionModelUsage {
+    pub model: String,
+    pub calls: usize,
+    #[serde(flatten)]
+    pub usage: NormalizedUsage,
+    pub total_tokens_including_cache: u64,
+    /// `None` when the model has no known pricing.
+    pub est_cost_usd: Option<f64>,
+    /// What the same calls would cost with every input token billed at the uncached rate.
+    pub est_cost_no_cache_usd: Option<f64>,
+}
+
+/// Detail-view split of the usage the index attributes to one session. Token sums over `calls`
+/// and over `by_model` both equal `ConversationDetail.usage`; costs cover known-price models only.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageBreakdown {
+    /// In timestamp order, sub-agent calls included.
+    pub calls: Vec<UsageCall>,
+    /// Sorted by total tokens, largest first.
+    pub by_model: Vec<SessionModelUsage>,
+    pub cost_parts: CostParts,
+    /// Known-model cost had nothing been cached (all input at the uncached rate).
+    pub est_cost_no_cache_usd: f64,
+    /// Calls present in this transcript that belong to another session (fork/resume copies).
+    pub unattributed_calls: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -604,6 +719,7 @@ pub struct UsageStats {
     pub uncached_input: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    pub cache_creation_1h: u64,
     pub output: u64,
     pub reasoning_output: u64,
     pub total_tokens_including_cache: u64,
@@ -624,6 +740,7 @@ pub struct ModelUsage {
     pub uncached_input: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    pub cache_creation_1h: u64,
     pub output: u64,
     pub reasoning_output: u64,
     pub total_tokens_including_cache: u64,
@@ -639,6 +756,7 @@ pub struct DayUsage {
     pub uncached_input: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    pub cache_creation_1h: u64,
     pub output: u64,
     pub reasoning_output: u64,
     pub total_tokens_including_cache: u64,
@@ -655,6 +773,7 @@ pub struct ProjectUsage {
     pub uncached_input: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    pub cache_creation_1h: u64,
     pub output: u64,
     pub reasoning_output: u64,
     pub total_tokens_including_cache: u64,
@@ -672,11 +791,55 @@ mod tests {
             uncached_input: 100,
             cache_read: 40,
             cache_creation: 20,
+            cache_creation_1h: 5,
             output: 30,
             reasoning_output: 10,
         };
         assert_eq!(usage.total_tokens_including_cache(), 190);
+        assert_eq!(usage.context_tokens(), 160);
+        assert_eq!(usage.cache_creation_5m(), 15);
         assert_eq!(usage.cache_hit_rate(), Some(40.0 / 140.0));
+    }
+
+    #[test]
+    fn cache_tier_split_never_underflows_and_survives_old_json() {
+        let malformed = NormalizedUsage {
+            cache_creation: 3,
+            cache_creation_1h: 9,
+            ..NormalizedUsage::default()
+        };
+        assert_eq!(malformed.cache_creation_5m(), 0);
+        let old: NormalizedUsage = serde_json::from_str(
+            r#"{"uncachedInput":1,"cacheRead":2,"cacheCreation":3,"output":4,"reasoningOutput":0}"#,
+        )
+        .unwrap();
+        assert_eq!(old.cache_creation_1h, 0);
+        assert_eq!(old.cache_creation_5m(), 3);
+    }
+
+    #[test]
+    fn message_usage_flattens_token_fields_next_to_call_metadata() {
+        let usage = MessageUsage {
+            call_key: "claude:id:msg_1".to_string(),
+            model: "claude-sonnet-4-5".to_string(),
+            usage: NormalizedUsage {
+                uncached_input: 1,
+                cache_read: 2,
+                cache_creation: 3,
+                cache_creation_1h: 1,
+                output: 4,
+                reasoning_output: 0,
+            },
+            est_cost_usd: None,
+            attributed: true,
+        };
+        let json = serde_json::to_value(&usage).unwrap();
+        assert_eq!(json["callKey"], "claude:id:msg_1");
+        assert_eq!(json["cacheRead"], 2);
+        assert_eq!(json["cacheCreation1h"], 1);
+        assert!(json["estCostUsd"].is_null());
+        let back: MessageUsage = serde_json::from_value(json).unwrap();
+        assert_eq!(back, usage);
     }
 
     #[test]

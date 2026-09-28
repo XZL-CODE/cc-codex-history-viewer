@@ -3,7 +3,7 @@
 //! Rates are USD per million tokens and were checked against the Anthropic and OpenAI model
 //! pricing pages on 2026-07-17. Unknown or ambiguous model IDs intentionally return `None`.
 
-use crate::models::{Agent, NormalizedUsage};
+use crate::models::{Agent, CostParts, NormalizedUsage};
 use chrono::NaiveDate;
 
 #[derive(Clone, Copy)]
@@ -11,7 +11,10 @@ struct Rate {
     model: &'static str,
     input: f64,
     cached_input: f64,
+    /// 5-minute cache write rate (Claude: 1.25x input).
     cache_write: f64,
+    /// 1-hour cache write rate (Claude: 2x input). Codex never records cache writes.
+    cache_write_1h: f64,
     output: f64,
     long_context_threshold: Option<u64>,
 }
@@ -68,6 +71,7 @@ const fn rate(
         input,
         cached_input,
         cache_write,
+        cache_write_1h: input * 2.0,
         output,
         long_context_threshold: None,
     }
@@ -132,20 +136,52 @@ fn lookup(agent: Agent, model: &str) -> Option<Rate> {
 
 /// Estimate standard API-equivalent cost. It is not a Claude/Codex subscription charge.
 pub fn estimate_cost(agent: Agent, model: &str, usage: NormalizedUsage) -> Option<f64> {
+    estimate_cost_parts(agent, model, usage).map(CostParts::total)
+}
+
+/// [`estimate_cost`] split by billing category; the parts add up to the estimate.
+pub fn estimate_cost_parts(agent: Agent, model: &str, usage: NormalizedUsage) -> Option<CostParts> {
     let rate = lookup(agent, model)?;
+    let (input_multiplier, output_multiplier) = multipliers(rate, usage);
+    Some(CostParts {
+        uncached_input: usage.uncached_input as f64 * rate.input * input_multiplier / 1_000_000.0,
+        cache_read: usage.cache_read as f64 * rate.cached_input * input_multiplier / 1_000_000.0,
+        cache_creation: (usage.cache_creation_5m() as f64 * rate.cache_write
+            + usage.cache_creation_1h as f64 * rate.cache_write_1h)
+            * input_multiplier
+            / 1_000_000.0,
+        output: usage.output as f64 * rate.output * output_multiplier / 1_000_000.0,
+    })
+}
+
+/// What the same call would cost with every input token billed at the uncached rate, i.e.
+/// without prompt caching. `estimate_cost_without_cache - estimate_cost` is the cache saving,
+/// which is negative when cache writes cost more than the reads they enabled.
+pub fn estimate_cost_without_cache(
+    agent: Agent,
+    model: &str,
+    usage: NormalizedUsage,
+) -> Option<f64> {
+    let rate = lookup(agent, model)?;
+    let (input_multiplier, output_multiplier) = multipliers(rate, usage);
+    Some(
+        (usage.context_tokens() as f64 * rate.input * input_multiplier
+            + usage.output as f64 * rate.output * output_multiplier)
+            / 1_000_000.0,
+    )
+}
+
+/// Long-context surcharge (OpenAI models with a threshold): (input, output) multipliers.
+fn multipliers(rate: Rate, usage: NormalizedUsage) -> (f64, f64) {
     let input_total = usage.uncached_input.saturating_add(usage.cache_read);
     let long_context = rate
         .long_context_threshold
         .is_some_and(|threshold| input_total > threshold);
-    let input_multiplier = if long_context { 2.0 } else { 1.0 };
-    let output_multiplier = if long_context { 1.5 } else { 1.0 };
-    Some(
-        (usage.uncached_input as f64 * rate.input * input_multiplier
-            + usage.cache_read as f64 * rate.cached_input * input_multiplier
-            + usage.cache_creation as f64 * rate.cache_write * input_multiplier
-            + usage.output as f64 * rate.output * output_multiplier)
-            / 1_000_000.0,
-    )
+    if long_context {
+        (2.0, 1.5)
+    } else {
+        (1.0, 1.0)
+    }
 }
 
 #[cfg(test)]
@@ -157,6 +193,7 @@ mod tests {
             uncached_input: input,
             cache_read: cached,
             cache_creation: creation,
+            cache_creation_1h: 0,
             output,
             reasoning_output: output / 2,
         }
@@ -171,6 +208,43 @@ mod tests {
         )
         .unwrap();
         assert!((cost - 22.05).abs() < 1e-9);
+    }
+
+    #[test]
+    fn one_hour_cache_writes_cost_twice_the_input_rate() {
+        let mut split = usage(0, 0, 1_000_000, 0);
+        split.cache_creation_1h = 400_000;
+        let parts =
+            estimate_cost_parts(Agent::Claude, "claude-sonnet-4-5-20250929", split).unwrap();
+        // 600k at 3.75 + 400k at 6.00
+        assert!((parts.cache_creation - (2.25 + 2.4)).abs() < 1e-9);
+        assert_eq!(parts.uncached_input, 0.0);
+        assert!(
+            (parts.total() - estimate_cost(Agent::Claude, "claude-sonnet-4-5", split).unwrap())
+                .abs()
+                < 1e-12
+        );
+    }
+
+    #[test]
+    fn cost_parts_add_up_and_no_cache_estimate_bills_all_input_uncached() {
+        let call = usage(100_000, 900_000, 50_000, 10_000);
+        let parts = estimate_cost_parts(Agent::Claude, "claude-sonnet-4-5", call).unwrap();
+        let total = estimate_cost(Agent::Claude, "claude-sonnet-4-5", call).unwrap();
+        assert!((parts.total() - total).abs() < 1e-12);
+        let no_cache =
+            estimate_cost_without_cache(Agent::Claude, "claude-sonnet-4-5", call).unwrap();
+        // 1.05M input at 3.00 + 10k output at 15.00
+        assert!((no_cache - (3.15 + 0.15)).abs() < 1e-9);
+        assert!(no_cache > total, "reads at 0.3 beat writes at 3.75 here");
+
+        // Codex: cached input is discounted, nothing is written, long-context rule applies to both.
+        let codex = usage(300_000, 100_000, 0, 100_000);
+        let priced = estimate_cost(Agent::Codex, "gpt-5.4", codex).unwrap();
+        let unpriced = estimate_cost_without_cache(Agent::Codex, "gpt-5.4", codex).unwrap();
+        assert!((priced - (1.5 + 0.05 + 2.25)).abs() < 1e-9);
+        assert!((unpriced - (2.0 + 2.25)).abs() < 1e-9);
+        assert!(estimate_cost_without_cache(Agent::Claude, "unknown-model", call).is_none());
     }
 
     #[test]

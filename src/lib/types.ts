@@ -119,6 +119,8 @@ export interface ChatMessage {
   timestamp: number;
   isSidechain: boolean;
   blocks: ContentBlock[];
+  /** 仅承载 API 调用用量的助手消息带此字段 */
+  usage?: MessageUsage;
 }
 
 export interface ConversationDetail {
@@ -133,6 +135,7 @@ export interface ConversationDetail {
   models: string[];
   messages: ChatMessage[];
   usage: SessionUsage;
+  usageBreakdown: UsageBreakdown;
 }
 
 export interface DayCount {
@@ -160,12 +163,19 @@ export interface CliVersion {
 
 /* ----------------------------- Token 用量统计 ----------------------------- */
 
-export interface TokenUsageFields {
+/** 一次调用或若干调用之和的归一化 Token（与 Rust NormalizedUsage 平铺后一致） */
+export interface CallTokenFields {
   uncachedInput: number;
   cacheRead: number;
   cacheCreation: number;
+  /** cacheCreation 中按 1 小时档计费的部分（Claude），其余为 5 分钟档；Codex 恒为 0 */
+  cacheCreation1h: number;
   output: number;
+  /** output 的子集，仅展示 */
   reasoningOutput: number;
+}
+
+export interface TokenUsageFields extends CallTokenFields {
   totalTokensIncludingCache: number;
   estCostUsd: number | null;
   unknownModelTokens: number;
@@ -198,6 +208,59 @@ export interface UsageStats extends TokenUsageFields {
 export interface SessionUsage extends Omit<TokenUsageFields, "estCostUsd"> {
   estCostUsd: number;
   assistantMessages: number;
+}
+
+/**
+ * 单次 API 调用的用量，挂在承载它的助手消息上：Claude 一次调用按内容块拆成多条记录，只有
+ * 首条带用量；Codex 的 token_count 事件归到它前面那条模型输出的消息。
+ */
+export interface MessageUsage extends CallTokenFields {
+  /** 与索引共用的调用指纹 */
+  callKey: string;
+  model: string;
+  /** 未知定价模型为 null */
+  estCostUsd: number | null;
+  /** false：索引把这次调用归到了别的会话（resume/fork 复制进来的），不计入本会话 */
+  attributed: boolean;
+}
+
+/** 索引归属到本会话的一次调用（含 Claude 子代理文件里的调用，它们在本对话里没有消息） */
+export interface UsageCall extends CallTokenFields {
+  callKey: string;
+  timestamp: number;
+  model: string;
+  estCostUsd: number | null;
+  subagent: boolean;
+}
+
+export interface SessionModelUsage extends CallTokenFields {
+  model: string;
+  calls: number;
+  totalTokensIncludingCache: number;
+  estCostUsd: number | null;
+  /** 全部输入按非缓存价计的成本；未知定价为 null */
+  estCostNoCacheUsd: number | null;
+}
+
+/** 估算成本按计费类目拆分，四项之和等于估算成本 */
+export interface CostParts {
+  uncachedInput: number;
+  cacheRead: number;
+  cacheCreation: number;
+  output: number;
+}
+
+/** 会话用量明细：calls 与 byModel 的 Token 之和都等于 ConversationDetail.usage */
+export interface UsageBreakdown {
+  /** 按时间顺序，含子代理调用 */
+  calls: UsageCall[];
+  /** 按总 Token 降序 */
+  byModel: SessionModelUsage[];
+  costParts: CostParts;
+  /** 已知定价模型完全不用缓存时的成本 */
+  estCostNoCacheUsd: number;
+  /** 本对话里由 resume/fork 复制进来、已计入原会话的调用数 */
+  unattributedCalls: number;
 }
 
 export interface AppStats {

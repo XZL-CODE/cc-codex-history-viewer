@@ -8,7 +8,7 @@ use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
 use crate::state::{self, load_settings, resolve_data_paths, resolve_from_settings, AppState};
-use crate::{codex_parser, import, parser, persisted};
+use crate::{codex_parser, import, parser, persisted, usage_detail};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::cmp::Reverse;
@@ -34,13 +34,17 @@ fn cache_file(app: &AppHandle) -> Option<PathBuf> {
     app.path()
         .app_data_dir()
         .ok()
-        .map(|d| d.join("index_cache_v5.json"))
+        .map(|d| d.join("index_cache_v6.json"))
 }
 
 /// Remove only obsolete cache files written by this application.
 fn cleanup_legacy_cache(app: &AppHandle) {
     if let Ok(dir) = app.path().app_data_dir() {
-        for name in ["index_cache.json", "index_cache_v2.json"] {
+        for name in [
+            "index_cache.json",
+            "index_cache_v2.json",
+            "index_cache_v5.json",
+        ] {
             let legacy = dir.join(name);
             if legacy.exists() {
                 let _ = std::fs::remove_file(legacy);
@@ -356,6 +360,7 @@ async fn load_conversation(
         .get(&(agent, session_id.to_string()))
         .cloned()
         .unwrap_or_default();
+    usage_detail::attach_usage_breakdown(&mut detail, &index.session_calls(agent, session_id));
     Ok(detail)
 }
 

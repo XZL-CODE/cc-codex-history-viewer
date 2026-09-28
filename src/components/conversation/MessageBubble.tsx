@@ -1,9 +1,18 @@
 import { memo } from "react";
-import { Brain, Check, Copy } from "lucide-react";
-import type { ChatMessage, ContentBlock } from "@/lib/types";
+import { Brain, Check, Copy, Gauge } from "lucide-react";
+import type { ChatMessage, ContentBlock, MessageUsage } from "@/lib/types";
 import { useCopy } from "@/hooks/useCopy";
 import { useT } from "@/i18n";
-import { absoluteTime, cn } from "@/lib/utils";
+import {
+  absoluteTime,
+  cacheHitRate,
+  cn,
+  formatCost,
+  formatNumber,
+  formatPercent,
+  formatTokens,
+  usageContext,
+} from "@/lib/utils";
 import { Badge } from "@/components/ui";
 import { AgentBadge } from "@/components/AgentBadge";
 import { Collapsible } from "./Collapsible";
@@ -109,6 +118,54 @@ function BlockView({
   }
 }
 
+/** 单次调用的用量小标签：上下文 / 输出 / 成本，悬停看完整拆分；复制自其他会话的调用灰显 */
+function UsageChip({ usage }: { usage: MessageUsage }) {
+  const t = useT();
+  const cost = usage.estCostUsd === null ? "—" : formatCost(usage.estCostUsd);
+  const cacheWrite =
+    usage.cacheCreation1h > 0
+      ? t("usageCacheWriteTiersLine", {
+          m5: formatNumber(usage.cacheCreation - usage.cacheCreation1h),
+          h1: formatNumber(usage.cacheCreation1h),
+        })
+      : t("usageCacheWriteLine", { value: formatNumber(usage.cacheCreation) });
+  const output =
+    t("usageOutputLine", { value: formatNumber(usage.output) }) +
+    (usage.reasoningOutput > 0
+      ? ` (${t("reasoningOutputShort", { value: formatNumber(usage.reasoningOutput) })})`
+      : "");
+  const lines = [
+    t("msgUsageTooltipModel", { model: usage.model }),
+    t("usageUncachedLine", { value: formatNumber(usage.uncachedInput) }),
+    t("usageCacheReadLine", { value: formatNumber(usage.cacheRead) }),
+    cacheWrite,
+    output,
+    t("msgUsageHitRate", { value: formatPercent(cacheHitRate(usage)) }),
+  ];
+  if (!usage.attributed) lines.push(t("msgUsageForeignNote"));
+  return (
+    <span
+      title={lines.join("\n")}
+      className={cn(
+        "inline-flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] tabular-nums",
+        usage.attributed
+          ? "border-border/70 bg-background text-muted"
+          : "border-dashed border-border text-muted/80"
+      )}
+    >
+      <Gauge size={10} className="shrink-0" />
+      <span className="truncate">
+        {t("msgUsageChip", {
+          context: formatTokens(usageContext(usage)),
+          output: formatTokens(usage.output),
+          cost,
+        })}
+        {!usage.attributed && ` · ${t("msgUsageForeign")}`}
+      </span>
+    </span>
+  );
+}
+
 function messagePlainText(message: ChatMessage): string {
   return message.blocks
     .filter((block) => block.kind === "text" && block.text)
@@ -144,7 +201,7 @@ export const MessageBubble = memo(function MessageBubble({
         highlighted && "ring-2 ring-accent shadow-lg"
       )}
     >
-      <div className="mb-2.5 flex items-center gap-2">
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
         <AgentBadge agent={message.agent} />
         {(isUser || isSystem) && (
           <Badge tone={isUser ? "accent" : "warning"}>
@@ -155,6 +212,7 @@ export const MessageBubble = memo(function MessageBubble({
         <span className="text-[11px] text-muted">
           {absoluteTime(message.timestamp)}
         </span>
+        {message.usage && <UsageChip usage={message.usage} />}
         {copyable && (
           <button
             type="button"

@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge";
 import { format, formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { getCurrentLang, translate } from "@/i18n";
-import type { TokenUsageFields } from "./types";
+import type { CallTokenFields, TokenUsageFields } from "./types";
 
 /** 合并 Tailwind 类名 */
 export function cn(...inputs: ClassValue[]) {
@@ -109,8 +109,25 @@ export function decodePath(param: string): string {
 }
 
 /** 总 Token（含缓存），与后端 totalTokensIncludingCache 口径一致 */
-export function usageTotal(row: TokenUsageFields): number {
+export function usageTotal(row: CallTokenFields): number {
   return row.uncachedInput + row.cacheRead + row.cacheCreation + row.output;
+}
+
+/** 一次调用的上下文大小：全部输入 Token，不论是否命中缓存 */
+export function usageContext(row: CallTokenFields): number {
+  return row.uncachedInput + row.cacheRead + row.cacheCreation;
+}
+
+/** 缓存命中率 = 缓存读 ÷（非缓存输入 + 缓存读）；分母为 0 时为 null */
+export function cacheHitRate(row: CallTokenFields): number | null {
+  const denominator = row.uncachedInput + row.cacheRead;
+  return denominator > 0 ? row.cacheRead / denominator : null;
+}
+
+/** 比例 → 百分比文本，如 0.978 → "97.8%"；null / 非有限值显示 — */
+export function formatPercent(ratio: number | null, digits = 1): string {
+  if (ratio === null || !Number.isFinite(ratio)) return "—";
+  return `${(ratio * 100).toFixed(digits)}%`;
 }
 
 /** 美元金额：≥100 取整并加千分位，否则保留两位小数；无值显示 — */
@@ -118,6 +135,15 @@ export function formatCost(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—";
   if (value >= 100) return `$${Math.round(value).toLocaleString("en-US")}`;
   return `$${value.toFixed(2)}`;
+}
+
+/** 带符号的金额差，如 +$12.30 / −$0.12；0 显示 $0.00 */
+export function formatCostDelta(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const magnitude = formatCost(Math.abs(value));
+  if (value > 0) return `+${magnitude}`;
+  if (value < 0) return `−${magnitude}`;
+  return magnitude;
 }
 
 /** 一行用量的成本：全部来自未知定价模型时显示 — */

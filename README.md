@@ -26,6 +26,7 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 - **全文搜索会话内容**：除 Prompt 外，还能按需扫描助手回复、思考摘要与工具调用参数，命中可跳转到对话中的具体消息并高亮关键词；不建索引、不落盘。
 - **对话详情**：助手回复按 Markdown 渲染并高亮代码；Bash/Edit/Write/Read/TodoWrite 与 Codex apply_patch 等工具调用按语义展示（命令、行级 diff、补丁、清单）；会话内查找、用户轮次大纲、全部展开/折叠、超长会话分批渲染。
 - **每会话 Token 与成本**：会话列表可按最新 / 成本 / 消息数 / 时长排序；fork/resume 复制的调用只计入原会话，各会话之和等于全局总量。
+- **会话内 Token 用量明细**：对话详情页可展开「Token 用量明细」面板：总量 / 成本 / 输入 / 输出 / 缓存命中率五张指标卡（附平均每次调用上下文、每轮平均成本、子代理占比、缓存 5m / 1h 分档、相比不用缓存节省多少），Token 与成本构成条，按调用顺序的堆叠柱图（点击跳到对应消息），多模型会话再加按模型拆分表；每条助手消息带本次调用的上下文 / 输出 / 成本小标签，大纲里每个用户轮次显示本轮 Token 与成本。
 - **批量导出会话**：在文件夹页的「会话」标签页勾选多个会话一次导出，可合成一份 Markdown（带目录表），或每个会话一份并附 index.md；可选是否包含工具调用与思考过程。单会话与批量导出都走不截断的解析路径，超长工具结果完整保留。
 - **导入 Claude Code 会话**：把云端 Claude Code（claude.ai/code）打包的 zip 导入本机 projects 目录，之后与本机会话一样检索、查看和导出。导入前先生成计划，逐会话判定新增 / 更新 / 跳过 / 冲突，冲突逐个选择「保留本机」或「用导入的覆盖」；云端的 `/home/user/<仓库名>` 可映射到本机目录，映射会被记住。详见[导入 Claude Code 会话](#导入-claude-code-会话)。
 - **对话详情补充**：`<persisted-output>` 标记的超大工具输出可在详情里按需展开完整内容，导出时内联；@ 引用或上传的文件以「附件」折叠块显示；只有 signature、正文为空的思考块不再显示。
@@ -118,6 +119,7 @@ Codex 文件已可能超过 1 GB。解析器逐行读取，不会先把整个 JS
 | `uncachedInput` | 未命中缓存的输入 Token |
 | `cacheRead` | 从缓存读取的输入 Token |
 | `cacheCreation` | 创建缓存使用的输入 Token |
+| `cacheCreation1h` | `cacheCreation` 中按 1 小时档计费的部分（仅 Claude），其余为 5 分钟档 |
 | `output` | 输出 Token，包含 reasoning 输出 |
 | `reasoningOutput` | `output` 的拆分子集，仅展示 |
 
@@ -135,6 +137,7 @@ Claude Code 映射：
 uncachedInput = input_tokens
 cacheRead = cache_read_input_tokens
 cacheCreation = cache_creation_input_tokens
+cacheCreation1h = cache_creation.ephemeral_1h_input_tokens（缺省 0，不超过 cacheCreation）
 output = output_tokens
 ```
 
@@ -144,6 +147,7 @@ Codex 映射只使用每个 `token_count.info.last_token_usage`，不累加累�
 uncachedInput = input_tokens - cached_input_tokens
 cacheRead = cached_input_tokens
 cacheCreation = 0
+cacheCreation1h = 0
 output = output_tokens
 reasoningOutput = reasoning_output_tokens
 ```
@@ -160,15 +164,19 @@ cacheRead / (uncachedInput + cacheRead)
 
 每个会话的 Token 与成本按同一去重规则归属：按会话开始时间顺序，一条调用首次出现在哪个会话就计入哪个会话，fork/resume 复制的历史调用只计入原会话；Claude 子代理的调用并入父会话。因此各会话之和等于全局总量。
 
+对话详情页的「Token 用量明细」面板与这套归属完全同源：索引记住每条唯一调用属于哪个会话，详情按此列出本会话的全部调用（含子代理文件里的调用），按调用与按模型的 Token 之和都等于页头的会话总量。每条助手消息上的用量标签来自该记录自身：Claude 一次调用按内容块拆成多条记录，只有首条带用量；Codex 的 `token_count` 事件归到它前面最近一条模型输出的消息（工具结果不算）。由 resume/fork 复制进来、已计入原会话的调用会灰显标注，不计入本会话的任何数字。缓存节省 = 全部输入按非缓存价计的成本 − 估算成本，缓存写多于读时为负。
+
 ### 成本说明
 
 成本按产品和可靠匹配的具体模型分别估算。Codex 成本显示为 **API 等价估算**，仅表示按对应 OpenAI API 标准 Token 单价换算的参考值，不代表 ChatGPT 或 Codex 订阅的实际账单、额度或积分消耗。
 
 无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
 
+Claude 缓存写按 5 分钟档（输入价 ×1.25）与 1 小时档（输入价 ×2）分别计价；旧记录没有分档字段时全部按 5 分钟档。
+
 ### 增量缓存
 
-索引缓存 schema 为 **v5**。每条 history/会话文件缓存记录包含 `agent`，缓存键包含产品和文件身份；文件 `mtime` 与长度指纹未变化时复用解析结果，仅重新解析新增或变化的文件。删除文件、路径设置变化或 cache schema 版本变化会使对应缓存失效。Claude 与 Codex 扫描均可并行进行。
+索引缓存 schema 为 **v6**（v6 为每条调用增加缓存写分档字段，升级后首次启动会全量重建一次索引）。每条 history/会话文件缓存记录包含 `agent`，缓存键包含产品和文件身份；文件 `mtime` 与长度指纹未变化时复用解析结果，仅重新解析新增或变化的文件。删除文件、路径设置变化或 cache schema 版本变化会使对应缓存失效。Claude 与 Codex 扫描均可并行进行。
 
 缓存写在本应用的系统数据目录，不写入 `~/.claude` 或 `~/.codex`。缓存是本地派生数据，可能含解析后的 Prompt、消息摘要和用量；它与原始历史一样应按敏感数据保护。
 
@@ -245,6 +253,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - **Full-text conversation search**: beyond prompts, scan assistant replies, thinking summaries, and tool-call inputs on demand; hits jump to the exact message with keywords highlighted. No index is built or written.
 - **Conversation view**: assistant replies render as Markdown with syntax-highlighted code; Bash/Edit/Write/Read/TodoWrite and Codex apply_patch calls render semantically (commands, line diffs, patches, checklists); in-conversation find, a user-turn outline, expand/collapse all, and batched rendering for very long sessions.
 - **Per-session tokens and cost**: sort sessions by newest, cost, messages, or duration; calls copied by fork/resume count only in the original session, so session totals add up to the global totals.
+- **In-session token usage details**: the conversation view has a collapsible "Token usage details" panel: five stat tiles (total / cost / input / output / cache hit rate, with average context per call, average cost per turn, sub-agent share, the 5-minute / 1-hour cache-write split and the saving versus no caching), token and cost mix bars, a stacked per-call chart in call order (click a bar to jump to the message) and, for multi-model sessions, a per-model table. Every assistant message carries a context / output / cost chip for its call, and the outline shows tokens and cost per user turn.
 - **Batch session export**: tick several sessions on a folder's Sessions tab and export them at once, either as one merged Markdown file with a table of contents or as one file per session plus an index.md; optionally include tool calls and thinking. Single and batch exports parse without the display clip, so long tool results are kept whole.
 - **Import Claude Code sessions**: bring a zip packed by Claude Code on the web (claude.ai/code) into the local projects directory, then browse, search and export those sessions like local ones. A read-only plan classifies every session as add / update / skip / conflict first; conflicts are resolved one by one with "keep local" or "overwrite with import"; the cloud `/home/user/<repo>` can be mapped to a local folder and the mapping is remembered. See [Importing Claude Code sessions](#importing-claude-code-sessions).
 - **Conversation view additions**: tool outputs that Claude Code persisted to a file (`<persisted-output>`) can be expanded in full on demand and are inlined in exports; files referenced with @ or uploaded show as a collapsed "Attachment" block; thinking blocks that carry only a signature are hidden.
@@ -299,15 +308,15 @@ For the All filter, prompt count, session count, and every normalized token comp
 
 ### Token accounting
 
-The unified fields are `uncachedInput`, `cacheRead`, `cacheCreation`, `output`, and `reasoningOutput`.
+The unified fields are `uncachedInput`, `cacheRead`, `cacheCreation`, `cacheCreation1h`, `output`, and `reasoningOutput`.
 
 ```text
 totalTokensIncludingCache = uncachedInput + cacheRead + cacheCreation + output
 ```
 
-`reasoningOutput` is a subset of `output` and is not added again.
+`reasoningOutput` is a subset of `output`, and `cacheCreation1h` (the part of `cacheCreation` billed at the 1-hour tier, Claude only) a subset of `cacheCreation`; neither is added again.
 
-Claude maps `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `output_tokens` directly to the first four fields.
+Claude maps `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `output_tokens` directly to the first four fields; `cacheCreation1h` comes from `cache_creation.ephemeral_1h_input_tokens` (0 when absent, clamped to `cacheCreation`).
 
 For Codex, only each `token_count.info.last_token_usage` is added; cumulative `total_token_usage` is ignored:
 
@@ -315,6 +324,7 @@ For Codex, only each `token_count.info.last_token_usage` is added; cumulative `t
 uncachedInput = input_tokens - cached_input_tokens
 cacheRead = cached_input_tokens
 cacheCreation = 0
+cacheCreation1h = 0
 output = output_tokens
 reasoningOutput = reasoning_output_tokens
 ```
@@ -323,11 +333,15 @@ Codex `input_tokens` already includes cached input. Copied fork/resume usage is 
 
 Per-session usage follows the same deduplication: sessions are visited in start-time order and each call counts in the first session that recorded it, so fork/resume copies stay with the original session and Claude sub-agent calls roll up into their parent session. Session totals therefore add up to the global totals.
 
+The conversation view's "Token usage details" panel shares that attribution: the index remembers which session owns each unique call, the detail lists every call the session owns (sub-agent transcripts included), and the per-call and per-model token sums equal the session total in the header. The chip on an assistant message comes from that record itself: a Claude call is written as one record per content block and only the first carries usage; a Codex `token_count` event lands on the nearest earlier model-output message (tool results excluded). Calls copied in by resume/fork that belong to another session are greyed out and excluded from every number. Cache saving = cost with every input token at the uncached rate − estimated cost, negative when cache writes outweigh reads.
+
 ### Cost, cache, and privacy
 
 Codex cost is labelled an **API-equivalent estimate**. It is a reference conversion using reliably matched OpenAI API token prices, not an actual ChatGPT/Codex subscription charge, allowance, or credit balance. Unknown models display “—”; combined totals include known estimated cost and disclose how many tokens have unknown pricing. Built-in rates were checked on 2026-07-17 against [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and official OpenAI model pages such as [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max), [o4-mini](https://developers.openai.com/api/docs/models/o4-mini), and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).
 
-Cache schema **v5** is agent-aware and stores per-file parsed results keyed by product and file identity. Unchanged `mtime` and file-length fingerprints are reused; changed, added, removed, reconfigured, or old-schema entries are rebuilt. The cache lives in this application's data directory and may contain derived prompt text, summaries, and usage.
+Claude cache writes are priced by tier: 5-minute at 1.25× the input rate, 1-hour at 2×; records without the split count as 5-minute.
+
+Cache schema **v6** (v6 adds the cache-write tier to every call, so the first launch after upgrading rebuilds the index once) is agent-aware and stores per-file parsed results keyed by product and file identity. Unchanged `mtime` and file-length fingerprints are reused; changed, added, removed, reconfigured, or old-schema entries are rebuilt. The cache lives in this application's data directory and may contain derived prompt text, summaries, and usage.
 
 The index builds on a background thread and reports progress while other queries wait for the same build. The toolbar refresh and ⌘/Ctrl+R re-parse only files whose fingerprint changed; the full rebuild in Settings ignores the cache. The previous index stays available while a rebuild runs.
 

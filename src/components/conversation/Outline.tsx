@@ -1,12 +1,16 @@
 import { ListTree } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
 import { useT } from "@/i18n";
-import { absoluteTime, cn } from "@/lib/utils";
+import { absoluteTime, cn, formatCost, formatTokens, usageTotal } from "@/lib/utils";
 
 export interface OutlineTurn {
   index: number;
   message: ChatMessage;
   preview: string;
+  /** 本轮（到下一个用户轮次之前）归属本会话的调用 Token 总量，含缓存 */
+  tokens: number;
+  /** 本轮估算成本；没有已知定价的调用时为 null */
+  cost: number | null;
 }
 
 export function buildOutline(messages: ChatMessage[]): OutlineTurn[] {
@@ -24,7 +28,27 @@ export function buildOutline(messages: ChatMessage[]): OutlineTurn[] {
       index,
       message,
       preview: text.length > 90 ? `${text.slice(0, 90)}…` : text,
+      tokens: 0,
+      cost: null,
     });
+  });
+  // 一轮 = 从这条用户消息到下一条用户消息之前；复制自其他会话的调用不计
+  turns.forEach((turn, position) => {
+    const end = turns[position + 1]?.index ?? messages.length;
+    let tokens = 0;
+    let cost = 0;
+    let priced = false;
+    for (let i = turn.index; i < end; i += 1) {
+      const usage = messages[i].usage;
+      if (!usage || !usage.attributed) continue;
+      tokens += usageTotal(usage);
+      if (usage.estCostUsd !== null) {
+        cost += usage.estCostUsd;
+        priced = true;
+      }
+    }
+    turn.tokens = tokens;
+    turn.cost = priced ? cost : null;
   });
   return turns;
 }
@@ -73,6 +97,11 @@ export function Outline({
                 <span className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-foreground">
                   {turn.preview}
                 </span>
+                {turn.tokens > 0 && (
+                  <span className="mt-0.5 block text-[10px] tabular-nums text-muted">
+                    {formatTokens(turn.tokens)} · {formatCost(turn.cost)}
+                  </span>
+                )}
               </button>
             </li>
           ))}

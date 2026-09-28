@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   Bar,
@@ -19,6 +19,7 @@ import {
 import type { AgentFilter, DayUsage, UsageStats } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { AgentBadge } from "@/components/AgentBadge";
+import { StatCard } from "@/components/StatCard";
 import { useT } from "@/i18n";
 import {
   cn,
@@ -36,39 +37,6 @@ const ACCENT = "var(--accent)";
 
 function shortModel(model: string): string {
   return model.replace(/^claude-/, "");
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  sub,
-  prominent = false,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-  prominent?: boolean;
-}) {
-  return (
-    <div
-      className={
-        prominent
-          ? "rounded-lg border border-accent/50 bg-accent/5 p-4"
-          : "rounded-lg border border-border bg-surface p-4"
-      }
-    >
-      <div className="flex items-center gap-1.5 text-xs text-muted">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="mt-1.5 text-2xl font-semibold text-foreground">
-        {value}
-      </div>
-      {sub && <div className="mt-0.5 text-[11px] text-muted">{sub}</div>}
-    </div>
-  );
 }
 
 interface DayTooltipProps {
@@ -377,11 +345,24 @@ export function TokenStats({
           icon={<ArrowDownToLine size={13} />}
           label={t("inputTokensCard")}
           value={formatTokens(input)}
-          sub={t("inputTokensSub", {
-            uncached: formatTokens(usage.uncachedInput),
-            cached: formatTokens(usage.cacheRead),
-            created: formatTokens(usage.cacheCreation),
-          })}
+          sub={
+            <>
+              <span className="block">
+                {t("inputTokensSub", {
+                  uncached: formatTokens(usage.uncachedInput),
+                  cached: formatTokens(usage.cacheRead),
+                  created: formatTokens(usage.cacheCreation),
+                })}
+              </span>
+              {usage.cacheCreation1h > 0 && (
+                <span className="block">
+                  {t("inputTokens1hSub", {
+                    value: formatTokens(usage.cacheCreation1h),
+                  })}
+                </span>
+              )}
+            </>
+          }
         />
         <StatCard
           icon={<DatabaseZap size={13} />}
