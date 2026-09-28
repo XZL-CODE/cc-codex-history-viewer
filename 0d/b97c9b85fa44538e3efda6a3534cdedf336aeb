@@ -1,0 +1,18 @@
+.agents/notes/README.md
+  h_41003e691dccbb 1-68
+AGENTS.md
+  h_41003e691dccbb 1-36
+CLAUDE.md
+  h_41003e691dccbb 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0db97c9b85fa44538e3efda6a3534cdedf336aeb",
+  "prompts": {},
+  "humans": {
+    "h_41003e691dccbb": {
+      "author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
