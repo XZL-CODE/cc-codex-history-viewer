@@ -1,9 +1,11 @@
-## v0.9.0 更新内容 / What's new
+## v0.10.0 更新内容 / What's new
 
-- **导入 Claude Code 会话**：顶栏新增「导入」，选择云端 Claude Code（claude.ai/code）打包的 zip 即可导入本机 projects 目录，之后与本机会话一样检索、查看和导出。先生成只读计划，逐会话判定新增 / 更新 / 跳过 / 冲突，冲突逐个选择「保留本机」或「用导入的覆盖」；只接受 `projects/<目录名>/` 之下的条目，绝不删除本机文件。
-- **项目映射**：云端的 `/home/user/<仓库名>` 可映射到本机目录（按仓库名自动预填、可选文件夹、可保持原路径），只改写每行的 cwd，会话归到本机项目，本机 `claude --resume` 也能找到；映射会被记住，可在设置里删除。
-- **对话详情**：`<persisted-output>` 标记的超大工具输出可按需展开完整内容，导出时内联；@ 引用或上传的文件以「附件」折叠块显示；只有 signature 的空思考块不再显示。
+- **会话内 Token 用量明细**：对话详情页新增可展开的「Token 用量明细」面板：总量 / 成本 / 输入 / 输出 / 缓存命中率五张指标卡（附平均每次调用上下文、每轮平均成本、子代理占比、相比不用缓存节省多少），Token 与成本构成条，按调用顺序的堆叠柱图（点击跳到对应消息），多模型会话另有按模型拆分表。
+- **逐调用与逐轮用量**：每条助手消息显示本次调用的上下文 / 输出 / 成本，悬停看完整拆分；resume/fork 复制进来、已计入原会话的调用会灰显标注；右侧大纲显示每个用户轮次的 Token 与成本。
+- **缓存写分档计价**：解析 Claude Code 记录里缓存写的 5 分钟 / 1 小时分档，1 小时档按官方价（输入价 ×2）估算，首页与会话的成本都更准。
+- **索引缓存 v6**：升级后首次启动会全量重建一次索引（大历史库需要等一会儿），之后仍是增量刷新。
 
-- **Import Claude Code sessions**: a new **Import** button in the top bar takes a zip packed by Claude Code on the web (claude.ai/code) and writes it into the local projects directory, after which the sessions are browsed, searched and exported like local ones. A read-only plan classifies each session as add / update / skip / conflict; conflicts are resolved one by one with "keep local" or "overwrite with import". Only entries below `projects/<dir>/` are accepted and nothing local is ever deleted.
-- **Project mapping**: the cloud `/home/user/<repo>` can be mapped to a local folder (prefilled by repository name, chosen with a folder picker, or kept as is); only each line's cwd is rewritten, the session joins the local project and `claude --resume` finds it locally. Mappings are remembered and can be removed in Settings.
-- **Conversation view**: tool outputs persisted as `<persisted-output>` expand to their full content on demand and are inlined in exports; files referenced with @ or uploaded show as a collapsed "Attachment" block; signature-only thinking blocks are hidden.
+- **In-session token usage details**: the conversation view gains a collapsible "Token usage details" panel: five tiles (total / cost / input / output / cache hit rate, with average context per call, average cost per turn, sub-agent share and the saving versus no caching), token and cost mix bars, a stacked per-call chart in call order (click a bar to jump to the message) and a per-model table for multi-model sessions.
+- **Per-call and per-turn usage**: every assistant message shows the context / output / cost of its call, with the full split on hover; calls copied in by resume/fork that belong to another session are greyed out; the outline shows tokens and cost per user turn.
+- **Cache-write tiers**: Claude Code's 5-minute / 1-hour cache-write split is now read and priced (1-hour at 2× the input rate), so session and overview costs are more accurate.
+- **Index cache v6**: the first launch after upgrading rebuilds the index once (large histories take a moment); refreshes stay incremental afterwards.
