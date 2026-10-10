@@ -442,6 +442,71 @@ export interface ImportResult {
   index: IndexMeta;
 }
 
+/* ----------------------------- 外部会话 ----------------------------- */
+
+/** 导入文件落入的槽位：含思考 / 工具调用 / 工具结果 / 附件的是详细版，否则是简洁版 */
+export type ExternalVariant = "full" | "brief";
+
+/** 外部会话详情的显示范围：完整 / 只看对话 */
+export type ExternalView = "full" | "dialogue";
+
+/** 一条外部会话：同一产品 + 会话 ID 的详细版与简洁版合并为一条 */
+export interface ExternalSessionSummary {
+  /** 用作 URL 路径段与保留目录名 */
+  id: string;
+  agent: Agent;
+  sessionId: string;
+  title: string;
+  project: string;
+  startedAt: number;
+  endedAt: number;
+  /** 主版本（有详细版取详细版）解析出的消息数 */
+  messageCount: number;
+  /** 已保留：原始 Markdown 已复制到应用数据目录，重启后仍在 */
+  kept: boolean;
+  hasFull: boolean;
+  hasBrief: boolean;
+  importedAt: number;
+  fullFileName: string | null;
+  briefFileName: string | null;
+  gitBranch: string | null;
+  cliVersion: string | null;
+  /** 主版本文件头里原会话的 Token（含缓存）与估算成本 */
+  tokens: number | null;
+  costUsd: number | null;
+}
+
+export interface ExternalSessionList {
+  /** 按导入时间倒序 */
+  sessions: ExternalSessionSummary[];
+  /** 已保留目录中无法载入的条目说明 */
+  loadErrors: string[];
+}
+
+export interface ExternalSessionDetail {
+  summary: ExternalSessionSummary;
+  /** 实际显示的范围：只导入了简洁版时请求 full 也会返回 dialogue */
+  view: ExternalView;
+  detail: ConversationDetail;
+}
+
+/** 导入结果中的一个文件：失败时只有 error，成功时带所属条目与槽位 */
+export interface ExternalImportItem {
+  path: string;
+  fileName: string;
+  error: string | null;
+  id: string | null;
+  variant: ExternalVariant | null;
+  /** 替换了同一槽位里先前导入的文件 */
+  replaced: boolean;
+  /** 所属条目已保留，新文件已同步写入应用数据目录 */
+  kept: boolean;
+}
+
+export interface ExternalImportResult {
+  items: ExternalImportItem[];
+}
+
 /* ----------------------------- 设置 ----------------------------- */
 
 export interface SettingsInput {

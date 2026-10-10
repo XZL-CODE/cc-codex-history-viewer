@@ -7,11 +7,19 @@ import { Home } from "@/pages/Home";
 import { ProjectPrompts } from "@/pages/ProjectPrompts";
 import { Export } from "@/pages/Export";
 import { SearchResults } from "@/pages/SearchResults";
+import { ExternalSessions } from "@/pages/ExternalSessions";
 
 // 对话详情带着 Markdown 渲染与语法高亮，单独拆包按需加载
 const ConversationDetail = lazy(() =>
   import("@/pages/ConversationDetail").then((module) => ({
     default: module.ConversationDetail,
+  }))
+);
+
+// 外部会话详情复用同一套对话查看器，同样按需加载
+const ExternalConversation = lazy(() =>
+  import("@/pages/ExternalConversation").then((module) => ({
+    default: module.ExternalConversation,
   }))
 );
 
@@ -33,6 +41,14 @@ function ConversationRoute() {
   );
 }
 
+function ExternalConversationRoute() {
+  return (
+    <Suspense fallback={<ConversationFallback />}>
+      <ExternalConversation />
+    </Suspense>
+  );
+}
+
 export default function App() {
   return (
     <StoreProvider>
@@ -41,6 +57,8 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="export" element={<Export />} />
           <Route path="search" element={<SearchResults />} />
+          <Route path="external" element={<ExternalSessions />} />
+          <Route path="external/:id" element={<ExternalConversationRoute />} />
           <Route path="project/:encoded" element={<ProjectPrompts />} />
           <Route
             path="conversation/:agent/:sessionId"

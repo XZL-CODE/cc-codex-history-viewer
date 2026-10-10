@@ -1,5 +1,6 @@
 //! Runtime state and read-only data-source path resolution.
 
+use crate::external::ExternalStore;
 use crate::indexer::AppIndex;
 use crate::models::SettingsInput;
 use std::ffi::OsString;
@@ -14,6 +15,9 @@ pub struct AppState {
     pub index: RwLock<Option<Arc<AppIndex>>>,
     /// Serializes index builds so concurrent commands share one build instead of racing.
     pub build_lock: AsyncMutex<()>,
+    /// Imported external Markdown sessions. Never part of the index; `Arc` so commands can move
+    /// a handle into `spawn_blocking`.
+    pub external: Arc<std::sync::Mutex<ExternalStore>>,
 }
 
 impl AppState {
@@ -21,6 +25,7 @@ impl AppState {
         Self {
             index: RwLock::new(None),
             build_lock: AsyncMutex::new(()),
+            external: Arc::new(std::sync::Mutex::new(ExternalStore::new())),
         }
     }
 }

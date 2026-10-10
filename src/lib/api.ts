@@ -13,6 +13,11 @@ import type {
   ConversationSearchResponse,
   ExportParams,
   ExportResult,
+  ExternalImportResult,
+  ExternalSessionDetail,
+  ExternalSessionList,
+  ExternalSessionSummary,
+  ExternalView,
   ImportInspection,
   ImportPlan,
   ImportResult,
@@ -186,6 +191,25 @@ export const api = {
       mappings,
       decisions,
     }),
+
+  /** 外部会话：导入他人导出的单会话 Markdown，默认只放在内存里，不写入 ~/.claude / ~/.codex；逐文件给出结果 */
+  importExternalMarkdown: (paths: string[]) =>
+    invoke<ExternalImportResult>("import_external_markdown", { paths }),
+
+  listExternalSessions: () =>
+    invoke<ExternalSessionList>("list_external_sessions"),
+
+  /** view=full 时没有详细版会退回简洁版；view=dialogue 时没有简洁版会由详细版过滤得到 */
+  getExternalSession: (id: string, view: ExternalView) =>
+    invoke<ExternalSessionDetail>("get_external_session", { id, view }),
+
+  /** 保留：把原始 Markdown 复制到应用数据目录，重启后仍可查看 */
+  keepExternalSession: (id: string) =>
+    invoke<ExternalSessionSummary>("keep_external_session", { id }),
+
+  /** 删除：移出内存；已保留的同时删除应用数据目录里的副本 */
+  deleteExternalSession: (id: string) =>
+    invoke<void>("delete_external_session", { id }),
 
   getSettings: () => invoke<SettingsView>("get_settings"),
 

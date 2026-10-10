@@ -555,7 +555,7 @@ pub struct SessionsFolder {
 }
 
 /// 标题里最多保留的字符数。
-const TITLE_MAX_CHARS: usize = 60;
+pub(crate) const TITLE_MAX_CHARS: usize = 60;
 /// 文件名里标题片段最多保留的字符数。
 const FILE_TITLE_MAX_CHARS: usize = 40;
 
@@ -895,7 +895,7 @@ fn pretty_path(path: &str) -> String {
 }
 
 /// 取首个非空行并折叠空白；超过 max_chars 时截断并加省略号。
-fn shorten_title(raw: &str, max_chars: usize) -> String {
+pub(crate) fn shorten_title(raw: &str, max_chars: usize) -> String {
     let line = raw
         .lines()
         .map(str::trim)

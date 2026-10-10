@@ -88,6 +88,7 @@ export const en: Record<keyof typeof zh, string> = {
 
   /* ----------------------------- 侧栏 Sidebar ----------------------------- */
   navHome: "Home · Overview",
+  navExternal: "External sessions",
   navExport: "Export prompts",
   filterFoldersPlaceholder: "Filter folders…",
   clearFolderFilter: "Clear folder filter",
@@ -471,4 +472,50 @@ export const en: Record<keyof typeof zh, string> = {
   importFailed: "Import failed: {error}",
   importNoSessions: "No sessions to import in this archive",
   importDone: "Done",
+  importExternalPrefix: "Just want to read Markdown someone else exported? ",
+  importExternalLink: "Import it under “External sessions”",
+  importExternalSuffix: "; nothing is written to ~/.claude.",
+
+  /* ----------------------------- 外部会话 ExternalSessions / ExternalConversation ----------------------------- */
+  externalTitle: "External sessions",
+  externalIntro:
+    "Read single-conversation Markdown that someone else exported with this app. Imports live in memory for the current run only and disappear when the app quits; click “Keep” to copy the original Markdown into the app's data directory so it survives restarts. External sessions are never written to ~/.claude or ~/.codex and are not counted in stats, token totals or search. The detailed and brief exports of the same session merge into one entry.",
+  externalImportButton: "Import Markdown",
+  externalImporting: "Importing…",
+  externalImportFailed: "Import failed: {error}",
+  externalImportResults: "Import results",
+  externalVariantFull: "Detailed",
+  externalVariantBrief: "Brief",
+  externalReplaced: "Replaced",
+  externalStatusTemporary: "Temporary",
+  externalStatusKept: "Kept",
+  externalStatusTemporaryTitle: "Kept for this run only; gone when the app quits",
+  externalStatusKeptTitle:
+    "The original Markdown is saved in the app's data directory and survives restarts",
+  externalKeep: "Keep",
+  externalKeepTitle:
+    "Copy the original Markdown into the app's data directory so it survives restarts",
+  externalDelete: "Delete",
+  externalConfirmDelete: "Confirm delete",
+  externalDeleteTitle: "Remove from the list",
+  externalDeleteKeptTitle:
+    "Remove and delete the Markdown saved in the app's data directory",
+  externalActionFailed: "Action failed: {error}",
+  externalEmpty: "No external sessions yet",
+  externalEmptyHint:
+    "Click “Import Markdown” and pick single-conversation Markdown exported with this app; you can select the detailed and brief versions of the same session together.",
+  externalLoadErrors: "{count} kept external sessions could not be loaded",
+  externalBadge: "External import",
+  externalViewLabel: "Content shown",
+  externalViewFull: "Full",
+  externalViewDialogue: "Dialogue only",
+  externalFullUnavailable: "Only the brief version was imported",
+  externalDialogueDerived:
+    "No brief version imported; thinking, tool calls, tool results and attachments are filtered out of the detailed version",
+  externalTokens: "Tokens (incl. cache) {value}",
+  externalCost: "Est. cost {value}",
+  externalSessionId: "Session ID {id}",
+  copySessionId: "Copy session ID",
+  externalSourceFiles: "Source files: {files}",
+  externalBackToList: "Back to external sessions",
 };

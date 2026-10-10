@@ -505,6 +505,96 @@ pub struct ImportResult {
     pub index: IndexMeta,
 }
 
+// ----------------------------- External sessions -----------------------------
+
+/// Which file of an external session: the detailed export (thinking, tool calls and results
+/// included) or the brief one (dialogue only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExternalVariant {
+    Full,
+    Brief,
+}
+
+/// What the external session detail shows: everything, or the dialogue only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExternalView {
+    Full,
+    Dialogue,
+}
+
+/// One imported single-conversation Markdown export, merged from its detailed and brief files.
+/// Conversation fields come from the primary file: the detailed one when present, else the brief.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSessionSummary {
+    /// `{agent}-{sessionId}`, or `{agent}-md-{hash}` when the session ID is unusable as a path.
+    pub id: String,
+    pub agent: Agent,
+    pub session_id: String,
+    pub title: String,
+    /// Project path as printed in the export (someone else's machine).
+    pub project: String,
+    pub started_at: i64,
+    pub ended_at: i64,
+    /// Messages parsed from the primary file.
+    pub message_count: usize,
+    /// True when the Markdown files were copied into the app data directory.
+    pub kept: bool,
+    pub has_full: bool,
+    pub has_brief: bool,
+    /// Unix milliseconds of the latest import into this entry.
+    pub imported_at: i64,
+    pub full_file_name: Option<String>,
+    pub brief_file_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub cli_version: Option<String>,
+    /// Token and cost lines of the export's header, when it printed them.
+    pub tokens: Option<u64>,
+    pub cost_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSessionList {
+    /// Newest import first.
+    pub sessions: Vec<ExternalSessionSummary>,
+    /// Kept entries that could not be read back from the app data directory.
+    pub load_errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSessionDetail {
+    pub summary: ExternalSessionSummary,
+    /// The view actually returned (`dialogue` when only the brief file exists).
+    pub view: ExternalView,
+    pub detail: ConversationDetail,
+}
+
+/// Outcome of importing one Markdown file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportItem {
+    pub path: String,
+    pub file_name: String,
+    /// Set when the file was rejected; the other fields are then empty.
+    pub error: Option<String>,
+    pub id: Option<String>,
+    pub variant: Option<ExternalVariant>,
+    /// True when the file replaced an earlier import of the same variant.
+    pub replaced: bool,
+    /// True when the entry is kept, so the file was also written to the app data directory.
+    pub kept: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportResult {
+    pub items: Vec<ExternalImportItem>,
+}
+
 // ----------------------------- Settings -----------------------------
 
 /// Old four-field Claude settings remain valid because every new field defaults to empty.

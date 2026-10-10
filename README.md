@@ -29,6 +29,7 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 - **会话内 Token 用量明细**：对话详情页可展开「Token 用量明细」面板：总量 / 成本 / 输入 / 输出 / 缓存命中率五张指标卡（附平均每次调用上下文、每轮平均成本、子代理占比、缓存 5m / 1h 分档、相比不用缓存节省多少），Token 与成本构成条，按调用顺序的堆叠柱图（点击跳到对应消息），多模型会话再加按模型拆分表；每条助手消息带本次调用的上下文 / 输出 / 成本小标签，大纲里每个用户轮次显示本轮 Token 与成本。
 - **批量导出会话**：在文件夹页的「会话」标签页勾选多个会话一次导出，可合成一份 Markdown（带目录表），或每个会话一份并附 index.md；可选是否包含工具调用与思考过程。单会话与批量导出都走不截断的解析路径，超长工具结果完整保留。
 - **导入 Claude Code 会话**：把云端 Claude Code（claude.ai/code）打包的 zip 导入本机 projects 目录，之后与本机会话一样检索、查看和导出。导入前先生成计划，逐会话判定新增 / 更新 / 跳过 / 冲突，冲突逐个选择「保留本机」或「用导入的覆盖」；云端的 `/home/user/<仓库名>` 可映射到本机目录，映射会被记住。详见[导入 Claude Code 会话](#导入-claude-code-会话)。
+- **外部会话（临时查看他人导出的 Markdown）**：在侧栏「外部会话」导入别人用本应用导出的单会话 Markdown，用同一套对话详情阅读。同一会话的详细版与简洁版合并为一条，可在「完整 / 只看对话」之间切换。默认只在本次运行中保留，点「保留」才复制到应用数据目录；不写入 `~/.claude` 或 `~/.codex`，不计入统计与搜索。详见[外部会话](#外部会话)。
 - **对话详情补充**：`<persisted-output>` 标记的超大工具输出可在详情里按需展开完整内容，导出时内联；@ 引用或上传的文件以「附件」折叠块显示；只有 signature、正文为空的思考块不再显示。
 - **统计范围与活跃度日历**：概览支持全部 / 近 7 天 / 近 30 天 / 本月 / 自定义区间，日历热力图补齐没有记录的日期。
 - Prompt、会话和导出内容保留 Claude Code 或 Codex 来源标识。
@@ -202,6 +203,16 @@ projects/<项目目录名>/<会话ID>/          ← 同名旁挂目录：tool-re
 - **冲突处理**：弹窗逐个会话显示会话 ID、所属项目和两边的行数与最后一条记录时间，选择「保留本机」或「用导入的覆盖」，选择对整个会话生效；取消则什么都不写。
 - **写入与汇总**：先解析出计划，确认后一次性写入，写入前重新校验；只覆盖同名文件，绝不删除本机文件。写完走增量重建索引，并显示新增、更新、跳过、冲突中保留本机、冲突中覆盖各多少个会话。
 
+### 外部会话
+
+别人用本应用导出的单会话 Markdown（对话详情页的「导出 Markdown」）可以在侧栏「外部会话」里点「导入 Markdown」临时阅读，可一次多选。它们不会成为本机会话。
+
+- **支持的文件**：单会话导出（标题为「# 对话导出」或「# Conversation Export」），中英文标签都识别，Claude Code 与 Codex 都支持。批量导出（合并文件或 index.md）、Prompt 导出和搜索结果导出会被拒绝并说明原因。
+- **详细版与简洁版**：按产品 + 会话 ID 合并为一条。含思考、工具调用、工具结果或附件的文件算详细版，其余算简洁版；同一版本再次导入时替换旧的。「完整」显示详细版；「只看对话」显示简洁版，没有简洁版时由详细版去掉思考、工具调用、工具结果与附件得到，规则与导出时不勾选执行过程相同。只导入了简洁版时只能看对话。
+- **还原程度**：消息按文件里的分钟级时间原样显示；同一条消息里的多个文本块合并为一段；工具调用参数按 JSON 还原，按语义展示；工具结果与附件保留导出时的全文，不套用本机会话的展示截断。导出里没有逐次调用的用量，所以不显示 Token 用量明细面板，只显示文件头里的 Token 总量与估算成本。
+- **临时与保留**：导入的会话默认只在内存里，关闭应用即消失。点「保留」把原始 Markdown 复制到应用数据目录的 `external_sessions/<产品>-<会话ID>/`，下次启动自动载入；已保留的会话再导入新版本时同步写入。「删除」移除该条目，已保留的会同时删除这个目录。
+- **隔离**：外部会话不写入 `~/.claude` 或 `~/.codex`，不进入项目列表、概览统计、Prompt 搜索、全文搜索和 Token 汇总，也不提供再次导出与 Resume 命令。
+
 ### 超大工具输出与附件
 
 Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/tool-results/*.txt`，并在 tool_result 里留下 `<persisted-output>` 块和生成时的绝对路径。详情页按会话自己的目录和 `projects/` 之后的部分在当前 projects 目录下重新定位，`/` 与 `\` 分隔符都支持；找到就出现「查看完整输出」按钮，找不到保留原预览。导出包含工具调用时会内联完整输出并标注来源文件。只在显示层处理，不改写 jsonl。
@@ -214,7 +225,7 @@ Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/t
 - 不把 Codex 私有 SQLite 表作为主要数据源。
 - 不联网、不上传、不遥测历史内容。
 - 不修改或删除 `~/.codex` 及自定义 Codex 目录中的任何内容；对 `~/.claude` 唯一的写入是用户主动确认的会话导入，且只写 `projects/<目录名>/` 之下的会话文件，只覆盖同名文件，绝不删除。
-- 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件，以及用户主动导入的会话文件；全文搜索按需读取会话文件，不写任何索引。
+- 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件、用户主动导入的会话文件，以及用户选择保留的外部会话 Markdown（应用数据目录内）；全文搜索按需读取会话文件，不写任何索引。
 - 对话里的链接只在用户点击时交给系统浏览器打开，应用本身不发起任何网络请求。
 
 ### 开发与验证
@@ -256,6 +267,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - **In-session token usage details**: the conversation view has a collapsible "Token usage details" panel: five stat tiles (total / cost / input / output / cache hit rate, with average context per call, average cost per turn, sub-agent share, the 5-minute / 1-hour cache-write split and the saving versus no caching), token and cost mix bars, a stacked per-call chart in call order (click a bar to jump to the message) and, for multi-model sessions, a per-model table. Every assistant message carries a context / output / cost chip for its call, and the outline shows tokens and cost per user turn.
 - **Batch session export**: tick several sessions on a folder's Sessions tab and export them at once, either as one merged Markdown file with a table of contents or as one file per session plus an index.md; optionally include tool calls and thinking. Single and batch exports parse without the display clip, so long tool results are kept whole.
 - **Import Claude Code sessions**: bring a zip packed by Claude Code on the web (claude.ai/code) into the local projects directory, then browse, search and export those sessions like local ones. A read-only plan classifies every session as add / update / skip / conflict first; conflicts are resolved one by one with "keep local" or "overwrite with import"; the cloud `/home/user/<repo>` can be mapped to a local folder and the mapping is remembered. See [Importing Claude Code sessions](#importing-claude-code-sessions).
+- **External sessions (read someone else's exported Markdown)**: import a single-conversation Markdown file that someone else exported with this app from the sidebar's "External sessions" page and read it in the same conversation view. The detailed and brief exports of one session merge into one entry with a "Full / Dialogue only" switch. Imports last only for the current run unless you click "Keep", which copies them into the app's data directory; nothing is written to `~/.claude` or `~/.codex`, and external sessions stay out of stats and search. See [External sessions](#external-sessions).
 - **Conversation view additions**: tool outputs that Claude Code persisted to a file (`<persisted-output>`) can be expanded in full on demand and are inlined in exports; files referenced with @ or uploaded show as a collapsed "Attachment" block; thinking blocks that carry only a signature are hidden.
 - **Time range and activity calendar**: scope the overview to all time, last 7 / 30 days, this month, or a custom range; a calendar heatmap fills in days without records.
 - Preserve the Claude Code or Codex identity on prompts, sessions, and exports.
@@ -347,7 +359,7 @@ The index builds on a background thread and reports progress while other queries
 
 Full-text conversation search builds no index: each search streams the session files in the current scope in parallel, prefilters raw lines with a case-insensitive byte search, and parses only matching lines. It covers user messages, assistant replies, thinking summaries, and tool-call inputs; tool results (file contents, command output) and injected developer/system or `AGENTS.md` context never match. Every keyword must appear in the same message. At most 20 hits per session and 300 in total are returned, with a notice when results are truncated.
 
-The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, and Markdown files explicitly exported by the user. Links inside conversations open in the system browser only when clicked.
+The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, Markdown files explicitly exported by the user, and external-session Markdown the user chose to keep (inside the app's data directory). Links inside conversations open in the system browser only when clicked.
 
 ### Importing Claude Code sessions
 
@@ -364,6 +376,16 @@ projects/<project dir>/<session id>/      ← side directory: tool-results/*.txt
 - **Plan rules**: a session is the transcript plus its side directory. Missing locally: add. Local transcript is a prefix of the imported one (a newer snapshot of the same session): update. Imported transcript is a prefix of the local one: skip. Identical: skip, only adding side files the archive has and the local copy lacks. Anything else, including identical transcripts with a differing same-named side file: conflict. Runtime markers such as `ccr-tip.json` are not compared.
 - **Conflicts**: the dialog shows the session ID, project, and each side's line count and last record time; choose "keep local" or "overwrite with import" per session. The choice covers the whole session, and cancelling writes nothing.
 - **Write and summary**: the plan is computed first and re-validated right before writing; files are written atomically, same-named files are overwritten, nothing is deleted. The index then refreshes incrementally and the summary reports added, updated, skipped, kept-local and overwritten sessions.
+
+### External sessions
+
+A single-conversation Markdown file that someone else exported with this app (the conversation view's "Export Markdown") can be read through **Import Markdown** on the sidebar's "External sessions" page; several files can be picked at once. They never become local sessions.
+
+- **Accepted files**: single-conversation exports (titled "# Conversation Export" or "# 对话导出"), with English or Chinese labels, from Claude Code or Codex. Batch exports (merged file or index.md), prompt exports and search-result exports are rejected with a reason.
+- **Detailed and brief**: files merge by product + session ID. A file with thinking, tool calls, tool results or attachments is the detailed version, anything else the brief one; importing the same version again replaces it. "Full" shows the detailed version; "Dialogue only" shows the brief version, or, without one, the detailed version minus thinking, tool calls, tool results and attachments (the same rule as exporting without tool calls). With only the brief version, only the dialogue is available.
+- **Fidelity**: messages show the minute-level time printed in the file; several text blocks of one message merge into one; tool-call inputs are restored as JSON and render semantically; tool results and attachments keep the exported full text without the display clip used for local sessions. Exports carry no per-call usage, so the token usage panel is hidden and only the file header's token total and estimated cost are shown.
+- **Temporary or kept**: imports live in memory and disappear when the app quits. "Keep" copies the original Markdown into `external_sessions/<agent>-<session id>/` under the app's data directory and loads it on the next launch; importing a new version of a kept session writes it there too. "Delete" removes the entry and, for a kept one, that directory.
+- **Isolation**: external sessions are never written to `~/.claude` or `~/.codex`, never appear in the project list, overview stats, prompt search, full-text search or token totals, and offer no re-export or resume command.
 
 ### Persisted tool outputs and attachments
 

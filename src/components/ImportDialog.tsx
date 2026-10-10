@@ -318,6 +318,11 @@ export function ImportDialog({
     navigate(`/project/${encodePath(path)}`);
   };
 
+  const openExternal = () => {
+    onClose();
+    navigate("/external");
+  };
+
   const requestClose = () => {
     if (!busy) onClose();
   };
@@ -383,6 +388,19 @@ export function ImportDialog({
                   </span>
                 )}
               </div>
+              {/* 只想阅读别人导出的 Markdown 时引到「外部会话」，那里不写入 ~/.claude */}
+              <p className="text-[11px] leading-relaxed text-muted">
+                {t("importExternalPrefix")}
+                <button
+                  type="button"
+                  onClick={openExternal}
+                  disabled={phase === "inspecting"}
+                  className="font-medium text-accent hover:underline disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {t("importExternalLink")}
+                </button>
+                {t("importExternalSuffix")}
+              </p>
             </>
           )}
 
