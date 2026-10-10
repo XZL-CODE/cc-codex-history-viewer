@@ -8,7 +8,7 @@ use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
 use crate::state::{self, load_settings, resolve_data_paths, resolve_from_settings, AppState};
-use crate::{codex_parser, import, parser, persisted, usage_detail};
+use crate::{codex_parser, external, import, parser, persisted, usage_detail};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::cmp::Reverse;
@@ -956,6 +956,90 @@ pub async fn apply_session_import(
         projects: outcome.projects,
         index: meta,
     })
+}
+
+// ----------------------------- 外部会话 -----------------------------
+
+/// 外部会话「保留」后的存放目录：只有「保留」才会创建；外部会话从不触碰 ~/.claude 与 ~/.codex。
+fn external_base_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|dir| dir.join("external_sessions"))
+        .map_err(|error| format!("无法定位应用数据目录：{error}"))
+}
+
+/// 在阻塞线程池里持锁操作外部会话存储（首次访问会从磁盘懒加载已保留的条目）。
+async fn with_external_store<F, R>(state: &AppState, app: &AppHandle, f: F) -> Result<R, String>
+where
+    F: FnOnce(&mut external::ExternalStore, &Path) -> Result<R, String> + Send + 'static,
+    R: Send + 'static,
+{
+    let base = external_base_dir(app)?;
+    let store = Arc::clone(&state.external);
+    tauri::async_runtime::spawn_blocking(move || f(&mut external::lock(&store), &base))
+        .await
+        .map_err(|error| format!("External session task failed: {error}"))?
+}
+
+/// 导入别人导出的单会话 Markdown：默认只放在内存里。逐个文件读取并解析（锁外），
+/// 单个文件的错误记在结果项里，不影响其他文件。
+#[tauri::command]
+pub async fn import_external_markdown(
+    paths: Vec<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ExternalImportResult, String> {
+    if paths.is_empty() {
+        return Err("没有选择任何文件。".to_string());
+    }
+    let base = external_base_dir(&app)?;
+    let store = Arc::clone(&state.external);
+    tauri::async_runtime::spawn_blocking(move || {
+        let now = chrono::Utc::now().timestamp_millis();
+        external::import_paths(&store, &base, &paths, now)
+    })
+    .await
+    .map_err(|error| format!("External import task failed: {error}"))
+}
+
+/// 外部会话列表（最近导入的在前），附带读取已保留条目时的错误。
+#[tauri::command]
+pub async fn list_external_sessions(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ExternalSessionList, String> {
+    with_external_store(&state, &app, |store, base| Ok(store.list(base))).await
+}
+
+/// 外部会话详情。view 缺省为完整视图；只导入了简洁版时返回的 view 为 dialogue。
+#[tauri::command]
+pub async fn get_external_session(
+    id: String,
+    view: Option<ExternalView>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ExternalSessionDetail, String> {
+    with_external_store(&state, &app, move |store, base| store.get(base, &id, view)).await
+}
+
+/// 保留：把原始 Markdown 复制到应用数据目录，重启后仍在。
+#[tauri::command]
+pub async fn keep_external_session(
+    id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ExternalSessionSummary, String> {
+    with_external_store(&state, &app, move |store, base| store.keep(base, &id)).await
+}
+
+/// 删除外部会话：临时条目只移出内存，已保留的同时删除它在应用数据目录下的文件夹。
+#[tauri::command]
+pub async fn delete_external_session(
+    id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    with_external_store(&state, &app, move |store, base| store.delete(base, &id)).await
 }
 
 /// 在系统文件管理器中定位某个文件或文件夹（macOS：Finder 选中）。

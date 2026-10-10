@@ -1,8 +1,20 @@
 // 基于 TanStack Query 的数据请求 hooks。
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useCallback } from "react";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Agent, AgentFilter, ExportGroupBy, SortMode } from "@/lib/types";
+import type {
+  Agent,
+  AgentFilter,
+  ExportGroupBy,
+  ExternalSessionList,
+  ExternalView,
+  SortMode,
+} from "@/lib/types";
 import type { ResolvedRange } from "@/lib/statsRange";
 import { useDebounce } from "./useDebounce";
 
@@ -92,6 +104,58 @@ export function useConversation(agent: Agent | null, sessionId: string | null) {
     enabled: !!agent && !!sessionId,
     staleTime: FIVE_MIN,
   });
+}
+
+/** 外部会话列表（临时导入 + 已保留），按导入时间倒序 */
+export function useExternalSessions() {
+  return useQuery({
+    queryKey: ["external-sessions"],
+    queryFn: api.listExternalSessions,
+    staleTime: FIVE_MIN,
+  });
+}
+
+/** 外部会话详情；切换「完整 / 只看对话」时保留上一份内容，换到别的会话时不保留 */
+export function useExternalConversation(id: string | null, view: ExternalView) {
+  return useQuery({
+    queryKey: ["external-session", id, view],
+    queryFn: () => api.getExternalSession(id as string, view),
+    enabled: !!id,
+    staleTime: FIVE_MIN,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === id ? previous : undefined,
+  });
+}
+
+/**
+ * 导入 / 保留 / 删除外部会话后刷新列表与详情。
+ * removedId 是刚删除的条目：它的详情直接移出缓存，避免对已不存在的会话重新请求；
+ * 缓存的列表也先去掉它，回到列表页时不会闪现已删除的条目。
+ */
+export function useRefreshExternalSessions() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (removedId?: string) => {
+      if (removedId) {
+        queryClient.removeQueries({ queryKey: ["external-session", removedId] });
+        queryClient.setQueryData<ExternalSessionList>(
+          ["external-sessions"],
+          (list) =>
+            list && {
+              ...list,
+              sessions: list.sessions.filter(
+                (session) => session.id !== removedId
+              ),
+            }
+        );
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["external-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["external-session"] }),
+      ]);
+    },
+    [queryClient]
+  );
 }
 
 /** 导出预览：仅生成统计与截断预览，不写文件。输入变化时自动重算。 */

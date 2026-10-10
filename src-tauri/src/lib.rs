@@ -3,6 +3,7 @@ pub mod codex_parser;
 pub mod commands;
 pub mod content_search;
 pub mod export;
+pub mod external;
 pub mod import;
 pub mod indexer;
 pub mod models;
@@ -44,6 +45,11 @@ pub fn run() {
             commands::inspect_session_import,
             commands::plan_session_import,
             commands::apply_session_import,
+            commands::import_external_markdown,
+            commands::list_external_sessions,
+            commands::get_external_session,
+            commands::keep_external_session,
+            commands::delete_external_session,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

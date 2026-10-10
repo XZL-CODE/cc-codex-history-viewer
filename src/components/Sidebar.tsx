@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import { Download, Folder, Home, Search, X } from "lucide-react";
+import { Download, FileInput, Folder, Home, Search, X } from "lucide-react";
 import { useProjects } from "@/hooks/queries";
 import { useStore } from "@/store";
 import { useT } from "@/i18n";
@@ -71,6 +71,9 @@ export function Sidebar() {
       <nav className="grid shrink-0 gap-1 px-2.5 pb-2 pt-2.5">
         <NavigationItem to="/" end icon={<Home size={16} />}>
           {t("navHome")}
+        </NavigationItem>
+        <NavigationItem to="/external" icon={<FileInput size={16} />}>
+          {t("navExternal")}
         </NavigationItem>
         <NavigationItem to="/export" icon={<Download size={16} />}>
           {t("navExport")}
