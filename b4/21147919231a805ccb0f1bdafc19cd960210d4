@@ -1,0 +1,18 @@
+.agents/notes/README.md
+  h_41003e691dccbb 13-16,22-31,34-36,49,51,71,73,77-78
+.rgignore
+  h_41003e691dccbb 1-5
+AGENTS.md
+  h_41003e691dccbb 13,21-22,34,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b421147919231a805ccb0f1bdafc19cd960210d4",
+  "prompts": {},
+  "humans": {
+    "h_41003e691dccbb": {
+      "author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
