@@ -323,6 +323,7 @@ export const zh = {
   loadedMessages: "已显示 {shown} / {total} 条消息",
   showAllMessages: "显示全部",
   linkOpenExternal: "在浏览器中打开 {url}",
+  remoteImageLink: "远程图片：{label}",
   toolResultOf: "{name} 结果",
   attachmentLabel: "附件",
   persistedOutputView: "查看完整输出（{size}）",

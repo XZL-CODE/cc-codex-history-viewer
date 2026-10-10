@@ -38,6 +38,7 @@ import {
 import { api, errMessage } from "@/lib/api";
 import { AgentBadge } from "@/components/AgentBadge";
 import { ConversationView } from "@/components/conversation/ConversationView";
+import { RemoteImagesBlockedContext } from "@/components/conversation/Markdown";
 import {
   ExternalDeleteButton,
   ExternalStatusBadge,
@@ -324,11 +325,14 @@ export function ExternalConversation() {
           }
         />
       ) : data ? (
-        <ConversationView
-          messages={messages}
-          header={() => header}
-          toolbarExtra={viewToggle}
-        />
+        // 外部会话来自他人：Markdown 里的远程图片只显示为链接
+        <RemoteImagesBlockedContext.Provider value={true}>
+          <ConversationView
+            messages={messages}
+            header={() => header}
+            toolbarExtra={viewToggle}
+          />
+        </RemoteImagesBlockedContext.Provider>
       ) : null}
     </div>
   );

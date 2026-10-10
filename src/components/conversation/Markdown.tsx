@@ -1,8 +1,16 @@
-import { useMemo, type AnchorHTMLAttributes, type ComponentProps } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  type AnchorHTMLAttributes,
+  type ComponentProps,
+  type ImgHTMLAttributes,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Image as ImageIcon } from "lucide-react";
 import { useT } from "@/i18n";
 import { rehypeMark } from "./rehypeMark";
 
@@ -32,7 +40,42 @@ function ExternalLink({
   );
 }
 
+/**
+ * 为 true 时远程图片不加载，只显示为链接，点击才交给系统浏览器。
+ * 外部会话来自他人，打开即加载远程图片会把阅读行为暴露给图片所在的服务器。
+ */
+export const RemoteImagesBlockedContext = createContext(false);
+
+/**
+ * 按浏览器加载图片时的同一套规则解析地址：落到别的 http(s) 源即为远程图片
+ * （含 `//host`、`\\host`、`https:host` 这类写法），返回可在浏览器打开的地址。
+ */
+function remoteImageUrl(src: string | undefined): string | null {
+  if (!src) return null;
+  try {
+    const url = new URL(src, window.location.href);
+    const web = url.protocol === "http:" || url.protocol === "https:";
+    return web && url.origin !== window.location.origin ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 远程图片换成链接；本地与内联（data:）图片照常显示 */
+function LinkedImage({ src, alt }: ImgHTMLAttributes<HTMLImageElement>) {
+  const t = useT();
+  const url = remoteImageUrl(src);
+  if (!url) return <img src={src} alt={alt} />;
+  return (
+    <ExternalLink href={url}>
+      <ImageIcon size={12} className="mr-1 inline-block align-[-1px]" aria-hidden />
+      {t("remoteImageLink", { label: alt || url })}
+    </ExternalLink>
+  );
+}
+
 const components: Components = { a: ExternalLink };
+const remoteImagesBlocked: Components = { a: ExternalLink, img: LinkedImage };
 
 /**
  * 安全的 Markdown 渲染：不解析原始 HTML（react-markdown 默认跳过），
@@ -45,6 +88,7 @@ export function Markdown({
   text: string;
   regex?: RegExp | null;
 }) {
+  const blockRemoteImages = useContext(RemoteImagesBlockedContext);
   const rehypePlugins = useMemo<RehypePlugins>(() => {
     const list: RehypePlugins = [[rehypeHighlight, { detect: false }]];
     if (regex) list.push([rehypeMark, { regex }]);
@@ -55,7 +99,7 @@ export function Markdown({
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={components}
+        components={blockRemoteImages ? remoteImagesBlocked : components}
       >
         {text}
       </ReactMarkdown>
