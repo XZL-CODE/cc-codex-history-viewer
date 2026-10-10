@@ -114,10 +114,16 @@ pub fn parse_markdown(text: &str) -> Result<ParsedExport, String> {
     parse_normalized(&normalize(text))
 }
 
-/// 去掉 BOM，统一换行为 LF。
+/// 去掉 BOM，把 CRLF 统一为 LF。单独的 CR 属于正文（导出时 `lines()` 不在 CR 处断行，
+/// 思考块的一行可能含 CR），只有整个文件没有 LF 时才把 CR 当作换行。
 fn normalize(text: &str) -> String {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    text.replace("\r\n", "\n").replace('\r', "\n")
+    let text = text.replace("\r\n", "\n");
+    if text.contains('\n') {
+        text
+    } else {
+        text.replace('\r', "\n")
+    }
 }
 
 fn parse_normalized(text: &str) -> Result<ParsedExport, String> {
@@ -502,6 +508,7 @@ fn parse_block_at(lines: &[&str], i: usize) -> Option<(ContentBlock, usize)> {
 }
 
 /// 思考块：标记后（可隔空行）是 `>` 引用行；或标记后只有空行、紧接结构行（空的思考块）。
+/// 空的思考块导出为「标记 + 两个空行」，后面同一条消息里的文本也能接上。
 fn parse_thinking(lines: &[&str], i: usize) -> Option<(ContentBlock, usize)> {
     let first = next_non_blank(lines, i + 1);
     let mut next = first;
@@ -518,7 +525,9 @@ fn parse_thinking(lines: &[&str], i: usize) -> Option<(ContentBlock, usize)> {
             next += 1;
         }
         parts.join("\n").trim().to_string()
-    } else if first > i + 1 && (first >= lines.len() || is_structural(lines[first])) {
+    } else if first == i + 3
+        || (first > i + 1 && (first >= lines.len() || is_structural(lines[first])))
+    {
         String::new()
     } else {
         return None;
@@ -923,15 +932,22 @@ fn write_record(dir: &Path, entry: &Entry) -> Result<(), String> {
     write_atomic(&dir.join("entry.json"), &json)
 }
 
-/// 写入条目的全部文件（保留）。
+/// 写入条目的全部文件（保留）。目录里遗留的、本条目没有的版本文件一并删除：
+/// 否则读不回来的旧文件会让下次启动跳过整个条目。
 fn write_entry(dir: &Path, entry: &Entry) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|error| format!("创建目录失败：{error}"))?;
     for (variant, slot) in [
         (ExternalVariant::Full, &entry.full),
         (ExternalVariant::Brief, &entry.brief),
     ] {
-        if let Some(file) = slot {
-            write_atomic(&dir.join(variant_file(variant)), file.markdown.as_bytes())?;
+        let path = dir.join(variant_file(variant));
+        match slot {
+            Some(file) => write_atomic(&path, file.markdown.as_bytes())?,
+            None => match fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::NotFound => {}
+                Err(error) => return Err(format!("删除旧文件失败：{error}")),
+            },
         }
     }
     write_record(dir, entry)
@@ -1176,7 +1192,11 @@ impl ExternalStore {
             return Err(error);
         }
         entry.kept = true;
-        Ok(summarize(entry))
+        let summary = summarize(entry);
+        // 这个目录先前读不回来的报错已被本次写入取代
+        let prefix = format!("{id}：");
+        self.load_errors.retain(|error| !error.starts_with(&prefix));
+        Ok(summary)
     }
 
     /// 删除：移出内存；已保留的条目同时删除 `<base>/<id>` 目录。
@@ -1834,6 +1854,90 @@ mod tests {
         assert!(base.join("claude-broken").exists());
         assert!(lock(&fresh).list(&base).sessions.is_empty());
         assert_eq!(lock(&fresh).delete(&base, &id).unwrap_err(), ERR_NOT_FOUND);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn bare_cr_and_empty_thinking_round_trip() {
+        // 思考块一行里的单独 CR 不是换行；空的思考块后面同一条消息里紧跟文本
+        let mut original = sample(Agent::Claude);
+        original.messages = vec![
+            message(Agent::Claude, "user", minute(0), false, vec![text("开始")]),
+            message(
+                Agent::Claude,
+                "assistant",
+                minute(1),
+                false,
+                vec![
+                    block("thinking", Some("step 10%\rstep 20%"), None),
+                    text("answer"),
+                ],
+            ),
+            message(
+                Agent::Claude,
+                "assistant",
+                minute(2),
+                false,
+                vec![block("thinking", Some(""), None), text("after empty")],
+            ),
+        ];
+        for lang in [Lang::Zh, Lang::En] {
+            let detailed = build_conversation_markdown(&original, true, lang);
+            let parsed = parse_markdown(&detailed).unwrap();
+            assert!(parsed.has_process);
+            assert_same_messages(
+                &parsed.detail.messages,
+                &expected(&original, true),
+                "bare cr / empty thinking",
+            );
+            let brief =
+                parse_markdown(&build_conversation_markdown(&original, false, lang)).unwrap();
+            assert_same_messages(
+                &dialogue_only(&parsed.detail).messages,
+                &brief.detail.messages,
+                "dialogue_only",
+            );
+        }
+
+        // 整个文件只有 CR 换行（老式 Mac）时仍按换行解析
+        let plain = sample(Agent::Codex);
+        let markdown = build_conversation_markdown(&plain, true, Lang::Zh);
+        let lf = parse_markdown(&markdown).unwrap();
+        let cr = parse_markdown(&markdown.replace('\n', "\r")).unwrap();
+        assert_same_messages(&cr.detail.messages, &lf.detail.messages, "cr only");
+    }
+
+    #[test]
+    fn keeping_over_a_broken_directory_replaces_it() {
+        let root = temp_root("broken");
+        let base = root.join("external_sessions");
+        let id = format!("claude-{SID}");
+        fs::create_dir_all(base.join(&id)).unwrap();
+        fs::write(base.join(&id).join("full.md"), "# junk\n").unwrap();
+
+        let store = Mutex::new(ExternalStore::new());
+        let list = lock(&store).list(&base);
+        assert!(list.sessions.is_empty());
+        assert_eq!(list.load_errors.len(), 1);
+        assert!(list.load_errors[0].starts_with(&format!("{id}：")));
+
+        let brief_md = build_conversation_markdown(&sample(Agent::Claude), false, Lang::Zh);
+        let brief = write_file(&root, "brief.md", brief_md.as_bytes());
+        let result = import_paths(&store, &base, &[brief], 2_000);
+        assert!(result.items[0].error.is_none());
+        let summary = lock(&store).keep(&base, &id).unwrap();
+        assert!(summary.kept && !summary.has_full && summary.has_brief);
+        assert!(
+            !base.join(&id).join("full.md").exists(),
+            "遗留的坏文件被删除"
+        );
+        assert!(lock(&store).list(&base).load_errors.is_empty());
+
+        let reloaded = Mutex::new(ExternalStore::new());
+        let list = lock(&reloaded).list(&base);
+        assert!(list.load_errors.is_empty());
+        assert_eq!(list.sessions.len(), 1);
+        assert!(list.sessions[0].kept && list.sessions[0].has_brief);
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -125,16 +125,17 @@ export function ConversationView({
     () => (findOpen ? buildTokenRegex(findQuery.split(/\s+/)) : null),
     [findOpen, findQuery]
   );
-  // 查找时渲染全部消息，这样命中才能被定位
+  // 查找时渲染全部消息，这样命中才能被定位；换了一组消息（如切换视图）时同样重新铺满，
+  // 并且要排在上面的分批重置之后执行
   useEffect(() => {
     if (regex && messages.length > 0) setVisible(messages.length);
-  }, [regex, messages.length]);
+  }, [regex, messages]);
   const listRef = useRef<HTMLDivElement>(null);
   const [hits, setHits] = useState<HTMLElement[]>([]);
   const [activeHit, setActiveHit] = useState(0);
   useEffect(() => {
     setActiveHit(0);
-  }, [regex]);
+  }, [regex, messages]);
   useEffect(() => {
     const container = listRef.current;
     if (!container || !regex) {

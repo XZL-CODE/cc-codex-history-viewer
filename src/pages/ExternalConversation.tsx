@@ -151,7 +151,8 @@ export function ExternalConversation() {
               aria-disabled={unavailable || undefined}
               title={hint}
               onClick={() => {
-                if (!unavailable) chooseView(mode);
+                // 已在显示的范围不重新请求，免得丢掉已加载的批次与滚动位置
+                if (!unavailable && mode !== shownView) chooseView(mode);
               }}
               className={cn(
                 "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",

@@ -2,7 +2,7 @@
 // 导入默认只在内存里，「保留」才把原始 Markdown 复制到应用数据目录；从不写入 ~/.claude / ~/.codex，
 // 也不进入项目列表、统计与搜索。
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -74,11 +74,13 @@ export function ExternalDeleteButton({
     return () => window.clearTimeout(timer);
   }, [confirming]);
 
-  const handleClick = () => {
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (requireConfirm && !confirming) {
       setConfirming(true);
       return;
     }
+    // 双击的第二下不算确认，否则两步确认形同虚设
+    if (requireConfirm && event.detail > 1) return;
     setConfirming(false);
     onDelete();
   };

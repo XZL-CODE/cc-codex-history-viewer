@@ -207,8 +207,8 @@ projects/<项目目录名>/<会话ID>/          ← 同名旁挂目录：tool-re
 
 别人用本应用导出的单会话 Markdown（对话详情页的「导出 Markdown」）可以在侧栏「外部会话」里点「导入 Markdown」临时阅读，可一次多选。它们不会成为本机会话。
 
-- **支持的文件**：单会话导出（标题为「# 对话导出」或「# Conversation Export」），中英文标签都识别，Claude Code 与 Codex 都支持。批量导出（合并文件或 index.md）、Prompt 导出和搜索结果导出会被拒绝并说明原因。
-- **详细版与简洁版**：按产品 + 会话 ID 合并为一条。含思考、工具调用、工具结果或附件的文件算详细版，其余算简洁版；同一版本再次导入时替换旧的。「完整」显示详细版；「只看对话」显示简洁版，没有简洁版时由详细版去掉思考、工具调用、工具结果与附件得到，规则与导出时不勾选执行过程相同。只导入了简洁版时只能看对话。
+- **支持的文件**：单会话导出（标题为「# 对话导出」或「# Conversation Export」），中英文标签都识别，Claude Code 与 Codex 都支持。多文件批量导出里每个会话的文件与单会话导出格式相同，也可以导入；合并成一份的批量导出、index.md、Prompt 导出和搜索结果导出会被拒绝并说明原因。
+- **详细版与简洁版**：按产品 + 会话 ID 合并为一条。含思考、工具调用、工具结果或附件的文件算详细版，其余算简洁版；同一版本再次导入时替换旧的。「完整」显示详细版；「只看对话」显示简洁版，没有简洁版时由详细版去掉思考、工具调用、工具结果与附件得到，规则与导出时不勾选「包含工具调用与思考过程」相同。只导入了简洁版时只能看对话。
 - **还原程度**：消息按文件里的分钟级时间原样显示；同一条消息里的多个文本块合并为一段；工具调用参数按 JSON 还原，按语义展示；工具结果与附件保留导出时的全文，不套用本机会话的展示截断。导出里没有逐次调用的用量，所以不显示 Token 用量明细面板，只显示文件头里的 Token 总量与估算成本。
 - **临时与保留**：导入的会话默认只在内存里，关闭应用即消失。点「保留」把原始 Markdown 复制到应用数据目录的 `external_sessions/<产品>-<会话ID>/`，下次启动自动载入；已保留的会话再导入新版本时同步写入。「删除」移除该条目，已保留的会同时删除这个目录。
 - **隔离**：外部会话不写入 `~/.claude` 或 `~/.codex`，不进入项目列表、概览统计、Prompt 搜索、全文搜索和 Token 汇总，也不提供再次导出与 Resume 命令。
@@ -381,8 +381,8 @@ projects/<project dir>/<session id>/      ← side directory: tool-results/*.txt
 
 A single-conversation Markdown file that someone else exported with this app (the conversation view's "Export Markdown") can be read through **Import Markdown** on the sidebar's "External sessions" page; several files can be picked at once. They never become local sessions.
 
-- **Accepted files**: single-conversation exports (titled "# Conversation Export" or "# 对话导出"), with English or Chinese labels, from Claude Code or Codex. Batch exports (merged file or index.md), prompt exports and search-result exports are rejected with a reason.
-- **Detailed and brief**: files merge by product + session ID. A file with thinking, tool calls, tool results or attachments is the detailed version, anything else the brief one; importing the same version again replaces it. "Full" shows the detailed version; "Dialogue only" shows the brief version, or, without one, the detailed version minus thinking, tool calls, tool results and attachments (the same rule as exporting without tool calls). With only the brief version, only the dialogue is available.
+- **Accepted files**: single-conversation exports (titled "# Conversation Export" or "# 对话导出"), with English or Chinese labels, from Claude Code or Codex. The per-session files of a multi-file batch export use the same format and can be imported too; a merged batch export, index.md, prompt exports and search-result exports are rejected with a reason.
+- **Detailed and brief**: files merge by product + session ID. A file with thinking, tool calls, tool results or attachments is the detailed version, anything else the brief one; importing the same version again replaces it. "Full" shows the detailed version; "Dialogue only" shows the brief version, or, without one, the detailed version minus thinking, tool calls, tool results and attachments (the same rule as exporting with "Include tool calls & thinking" unticked). With only the brief version, only the dialogue is available.
 - **Fidelity**: messages show the minute-level time printed in the file; several text blocks of one message merge into one; tool-call inputs are restored as JSON and render semantically; tool results and attachments keep the exported full text without the display clip used for local sessions. Exports carry no per-call usage, so the token usage panel is hidden and only the file header's token total and estimated cost are shown.
 - **Temporary or kept**: imports live in memory and disappear when the app quits. "Keep" copies the original Markdown into `external_sessions/<agent>-<session id>/` under the app's data directory and loads it on the next launch; importing a new version of a kept session writes it there too. "Delete" removes the entry and, for a kept one, that directory.
 - **Isolation**: external sessions are never written to `~/.claude` or `~/.codex`, never appear in the project list, overview stats, prompt search, full-text search or token totals, and offer no re-export or resume command.
