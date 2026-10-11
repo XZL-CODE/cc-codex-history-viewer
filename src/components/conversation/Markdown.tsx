@@ -21,7 +21,8 @@ import { Image as ImageIcon } from "lucide-react";
 import { useT } from "@/i18n";
 import { rehypeMark } from "./rehypeMark";
 import {
-  remarkCodexDirectives,
+  codexDirectivesToLinks,
+  DIRECTIVE_SCHEME,
   remarkLiteHtml,
   remarkTrimCjkAutolinks,
 } from "./remarkFixes";
@@ -31,23 +32,39 @@ type RehypePlugins = NonNullable<ComponentProps<typeof ReactMarkdown>["rehypePlu
 // - CommonMark 的强调与删除线规则在中文标点旁失效（如「**不会当作零。**其他」不加粗），
 //   remark-cjk-friendly 两个插件按 CJK 友好的修订规则补上，只用于解析
 // - 段内单个换行按换行显示（remark-breaks），与 GitHub 评论和「原文」模式一致
-// - remarkFixes：Codex 建议追问指令、裸网址后的中文标点、<br> 与 HTML 注释
+// - remarkFixes：裸网址后的中文标点、<br> 与 HTML 注释；Codex 指令在解析前改写成链接
 const remarkPlugins = [
   remarkGfm,
   remarkCjkFriendly,
   remarkCjkFriendlyStrikethrough,
   remarkBreaks,
-  remarkCodexDirectives,
   remarkTrimCjkAutolinks,
   remarkLiteHtml,
 ];
 
-/** Windows 盘符路径与 file:// 地址：默认的地址过滤会把它们清空，这里保留以便显示路径 */
-const LOCAL_TARGET = /^([A-Za-z]:[\\/]|file:\/\/)/;
+/** Windows 盘符路径（`/` 或 `\`）与 file:// 地址：默认的地址过滤会把它们清空 */
+const LOCAL_TARGET = /^([A-Za-z]:[\\/]|file:\/\/)/i;
 
-/** 链接目标保留本地路径（只用于显示，见 ExternalLink），其余按 react-markdown 的默认规则过滤 */
-const urlTransform: UrlTransform = (url, key) =>
-  key === "href" && LOCAL_TARGET.test(url) ? url : defaultUrlTransform(url);
+/** 链接目标在渲染前已被百分号编码；只用于显示，解不开时原样返回 */
+function decodeTarget(url: string): string {
+  try {
+    return decodeURI(url);
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * 链接目标保留本地路径与 Codex 指令（都只用于显示，见 ExternalLink），
+ * 其余按 react-markdown 的默认规则过滤（javascript: 等不安全协议被清空）。
+ */
+const urlTransform: UrlTransform = (url, key) => {
+  if (key === "href") {
+    if (url.startsWith(DIRECTIVE_SCHEME)) return url;
+    if (LOCAL_TARGET.test(decodeTarget(url))) return url;
+  }
+  return defaultUrlTransform(url);
+};
 
 /**
  * 链接在系统浏览器中打开，避免 WebView 自身被导航走。
@@ -60,11 +77,25 @@ function ExternalLink({
 }: AnchorHTMLAttributes<HTMLAnchorElement>) {
   const t = useT();
   const external = !!href && /^https?:\/\//i.test(href);
+  if (href?.startsWith(DIRECTIVE_SCHEME)) {
+    // Codex 的建议追问：「↪ 标签」，悬停看完整提问
+    let detail = href.slice(DIRECTIVE_SCHEME.length);
+    try {
+      detail = decodeURIComponent(detail);
+    } catch {
+      /* 保留编码后的原文 */
+    }
+    return (
+      <span className="codex-directive" title={detail}>
+        {children}
+      </span>
+    );
+  }
   if (!external) {
     return (
       <span
         className="md-local-link"
-        title={href ? t("linkLocalTarget", { target: href }) : undefined}
+        title={href ? t("linkLocalTarget", { target: decodeTarget(href) }) : undefined}
       >
         {children}
       </span>
@@ -134,6 +165,7 @@ export function Markdown({
   regex?: RegExp | null;
 }) {
   const blockRemoteImages = useContext(RemoteImagesBlockedContext);
+  const source = useMemo(() => codexDirectivesToLinks(text), [text]);
   const rehypePlugins = useMemo<RehypePlugins>(() => {
     const list: RehypePlugins = [[rehypeHighlight, { detect: false }]];
     if (regex) list.push([rehypeMark, { regex }]);
@@ -147,7 +179,7 @@ export function Markdown({
         components={blockRemoteImages ? remoteImagesBlocked : components}
         urlTransform={urlTransform}
       >
-        {text}
+        {source}
       </ReactMarkdown>
     </div>
   );

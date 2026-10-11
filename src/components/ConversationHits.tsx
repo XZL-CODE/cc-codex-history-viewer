@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Brain, Folder, MessageSquare, Wrench } from "lucide-react";
 import type { ConversationHit } from "@/lib/types";
 import { useT } from "@/i18n";
+import { plainSummary } from "@/lib/plainText";
 import { absoluteTime, cn, encodePath, prettyPath } from "@/lib/utils";
 import { AgentBadge } from "./AgentBadge";
 import { Highlight } from "./Highlight";
@@ -121,7 +122,7 @@ export function ConversationHits({
               className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-foreground hover:text-accent"
             >
               <MessageSquare size={13} className="shrink-0 text-muted" />
-              <span className="truncate">{group.title || t("untitledSession")}</span>
+              <span className="truncate">{plainSummary(group.title) || t("untitledSession")}</span>
             </Link>
             <span className="text-[11px] text-muted">
               {t("hitCountInSession", { count: group.hits.length })}

@@ -201,7 +201,13 @@ function ProseText({
   markdown: boolean;
   regex: RegExp | null;
 }) {
-  if (!markdown) return <PlainText text={text} />;
+  if (!markdown) {
+    return (
+      <pre className="whitespace-pre-wrap break-words px-3 py-2 text-[11.5px] leading-relaxed text-foreground">
+        <MarkText text={text} regex={regex} />
+      </pre>
+    );
+  }
   return (
     <div className="px-3 py-2">
       <Markdown text={text} regex={regex} />
@@ -572,6 +578,9 @@ function PersistedOutputControls({
   );
 }
 
+/** Codex 内容数组的元素类型；Anthropic 风格的 `{"type": "text"}` 数组可能是真实的 JSON 输出，不拆 */
+const CODEX_CONTENT_TYPE = /^(input|output)_(text|image)$/;
+
 /**
  * Codex 的代码模式把工具输出记成内容数组 `[{"type": "input_text", "text": …}, …]`，
  * 直接显示会是一行行带 \n 转义的 JSON：取出其中的文本按行拼接；不是这种形状时返回 null。
@@ -589,9 +598,11 @@ function contentArrayText(text: string, imageLabel: string): string | null {
   const parts: string[] = [];
   for (const item of parsed) {
     const record = asRecord(item);
-    if (!record || typeof record.type !== "string") return null;
+    if (!record || typeof record.type !== "string" || !CODEX_CONTENT_TYPE.test(record.type)) {
+      return null;
+    }
     if (typeof record.text === "string") parts.push(record.text.replace(/\n+$/, ""));
-    else if (/image/i.test(record.type)) parts.push(imageLabel);
+    else if (record.type.endsWith("_image")) parts.push(imageLabel);
     else return null;
   }
   return parts.join("\n");
