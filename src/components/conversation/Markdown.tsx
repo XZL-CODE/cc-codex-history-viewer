@@ -8,6 +8,7 @@ import {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkCjkFriendly from "remark-cjk-friendly/parseOnly";
 import rehypeHighlight from "rehype-highlight";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Image as ImageIcon } from "lucide-react";
@@ -16,7 +17,9 @@ import { rehypeMark } from "./rehypeMark";
 
 type RehypePlugins = NonNullable<ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>;
 
-const remarkPlugins = [remarkGfm];
+// CommonMark 的强调规则在中文标点旁失效（如「**不会当作零。**其他」不加粗），
+// remark-cjk-friendly 按 CJK 友好的修订规则补上；只用于解析
+const remarkPlugins = [remarkGfm, remarkCjkFriendly];
 
 /** 链接在系统浏览器中打开，避免 WebView 自身被导航走 */
 function ExternalLink({
