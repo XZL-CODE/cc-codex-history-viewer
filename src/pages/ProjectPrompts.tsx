@@ -33,6 +33,7 @@ import {
   Spinner,
 } from "@/components/ui";
 import { getCurrentLang, useT, type DictKey } from "@/i18n";
+import { plainSummary } from "@/lib/plainText";
 import type {
   ExportProgress,
   SessionRef,
@@ -186,7 +187,7 @@ function SessionRowContent({
   return (
     <>
       <div className="line-clamp-2 text-sm font-medium text-foreground">
-        {session.title || t("untitledSession")}
+        {plainSummary(session.title) || t("untitledSession")}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
         {showAgentBadge && <AgentBadge agent={session.agent} />}

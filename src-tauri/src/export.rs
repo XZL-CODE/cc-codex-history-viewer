@@ -555,7 +555,7 @@ pub struct SessionsFolder {
 }
 
 /// 标题里最多保留的字符数。
-pub(crate) const TITLE_MAX_CHARS: usize = 60;
+const TITLE_MAX_CHARS: usize = 60;
 /// 文件名里标题片段最多保留的字符数。
 const FILE_TITLE_MAX_CHARS: usize = 40;
 
@@ -821,7 +821,12 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
             md.push_str(&format!("````json\n{input}\n````\n\n"));
         }
         "tool_result" if include_tools => {
-            md.push_str(&format!("**{}**\n\n", label("↩ 工具结果", "↩ Tool result")));
+            // 结果标题带上工具名（已知时），外部会话导入时据此还原
+            let marker = label("↩ 工具结果", "↩ Tool result");
+            match b.tool_name.as_deref().filter(|name| !name.is_empty()) {
+                Some(name) => md.push_str(&format!("**{marker} · {name}**\n\n")),
+                None => md.push_str(&format!("**{marker}**\n\n")),
+            }
             let t = b.text.as_deref().unwrap_or("");
             md.push_str(&format!("````\n{}\n````\n\n", t.trim()));
             push_truncated_note(md, b, lang);

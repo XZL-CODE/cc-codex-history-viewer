@@ -1,7 +1,7 @@
 // 工具调用与结果的智能渲染：常见工具按语义展示（命令、文件、diff、补丁、待办…），
 // 未识别的工具回退为键值 + JSON。所有正文只在折叠块展开时渲染。
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -15,6 +15,7 @@ import type { ContentBlock, PersistedOutputText } from "@/lib/types";
 import { api, errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
 import { cn, formatBytes, pathBasename } from "@/lib/utils";
+import { clipChars, plainSummary } from "@/lib/plainText";
 import { Collapsible } from "./Collapsible";
 import { DiffView } from "./DiffView";
 import { fencedCode, Markdown } from "./Markdown";
@@ -144,7 +145,7 @@ function KeyValue({ rows }: { rows: [string, ReactNode][] }) {
       {rows.map(([key, value]) => (
         <div key={key} className="contents">
           <dt className="text-muted">{key}</dt>
-          <dd className="min-w-0 break-all font-mono text-[11.5px] text-foreground">
+          <dd className="min-w-0 whitespace-pre-wrap break-all font-mono text-[11.5px] text-foreground">
             {value}
           </dd>
         </div>
@@ -190,6 +191,39 @@ function PlainText({ text }: { text: string }) {
   );
 }
 
+/** 模型写的 Markdown（子代理指令与报告、计划）：开关为 Markdown 时渲染，否则显示原文 */
+function ProseText({
+  text,
+  markdown,
+  regex,
+}: {
+  text: string;
+  markdown: boolean;
+  regex: RegExp | null;
+}) {
+  if (!markdown) {
+    return (
+      <pre className="whitespace-pre-wrap break-words px-3 py-2 text-[11.5px] leading-relaxed text-foreground">
+        <MarkText text={text} regex={regex} />
+      </pre>
+    );
+  }
+  return (
+    <div className="px-3 py-2">
+      <Markdown text={text} regex={regex} />
+    </div>
+  );
+}
+
+/** 返回子代理报告的工具：结果是模型写的 Markdown，不是命令输出或文件内容 */
+const PROSE_RESULT_TOOLS = /^(task|agent|spawn_agent|subagent)$/i;
+
+/** 首个非空行的纯文本摘要（去掉 Markdown 标记），用于折叠时的预览 */
+function proseHint(text: string, max = 120): string {
+  const line = text.split("\n").find((item) => item.trim() !== "") ?? "";
+  return clipChars(plainSummary(line), max);
+}
+
 interface ToolView {
   hint: string;
   body: ReactNode;
@@ -198,7 +232,8 @@ interface ToolView {
 function describeTool(
   name: string,
   raw: unknown,
-  t: ReturnType<typeof useT>
+  t: ReturnType<typeof useT>,
+  prose: { markdown: boolean; regex: RegExp | null }
 ): ToolView {
   const input = asRecord(raw);
   const patch = patchText(name, input, raw);
@@ -334,9 +369,17 @@ function describeTool(
               ]}
             />
           )}
-          {prompt && <PlainText text={prompt} />}
+          {prompt && <ProseText text={prompt} {...prose} />}
         </>
       ),
+    };
+  }
+
+  if (/^exit_?plan_?mode$/i.test(name) && str(input.plan)) {
+    const plan = str(input.plan) ?? "";
+    return {
+      hint: proseHint(plan),
+      body: <ProseText text={plan} {...prose} />,
     };
   }
 
@@ -420,14 +463,17 @@ function describeTool(
 
 export function ToolUseBlock({
   block,
+  markdown,
   regex,
 }: {
   block: ContentBlock;
+  /** 子代理指令与计划是否按 Markdown 渲染（跟随「Markdown / 原文」开关） */
+  markdown: boolean;
   regex: RegExp | null;
 }) {
   const t = useT();
   const name = block.toolName ?? "tool";
-  const view = describeTool(name, block.toolInput, t);
+  const view = describeTool(name, block.toolInput, t, { markdown, regex });
   return (
     <Collapsible
       summary={
@@ -532,17 +578,56 @@ function PersistedOutputControls({
   );
 }
 
+/** Codex 内容数组的元素类型；Anthropic 风格的 `{"type": "text"}` 数组可能是真实的 JSON 输出，不拆 */
+const CODEX_CONTENT_TYPE = /^(input|output)_(text|image)$/;
+
+/**
+ * Codex 的代码模式把工具输出记成内容数组 `[{"type": "input_text", "text": …}, …]`，
+ * 直接显示会是一行行带 \n 转义的 JSON：取出其中的文本按行拼接；不是这种形状时返回 null。
+ */
+function contentArrayText(text: string, imageLabel: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const parts: string[] = [];
+  for (const item of parsed) {
+    const record = asRecord(item);
+    if (!record || typeof record.type !== "string" || !CODEX_CONTENT_TYPE.test(record.type)) {
+      return null;
+    }
+    if (typeof record.text === "string") parts.push(record.text.replace(/\n+$/, ""));
+    else if (record.type.endsWith("_image")) parts.push(imageLabel);
+    else return null;
+  }
+  return parts.join("\n");
+}
+
 export function ToolResultBlock({
   block,
+  markdown,
   regex,
 }: {
   block: ContentBlock;
+  /** 子代理报告是否按 Markdown 渲染（跟随「Markdown / 原文」开关） */
+  markdown: boolean;
   regex: RegExp | null;
 }) {
   const t = useT();
   const [full, setFull] = useState<PersistedOutputText | null>(null);
-  const text = full ? full.text : (block.text ?? "");
-  const preview = firstLine(block.text ?? "", 90);
+  const imageLabel = t("imageFallback");
+  const shown = useMemo(() => {
+    const raw = block.text ?? "";
+    return contentArrayText(raw, imageLabel) ?? raw;
+  }, [block.text, imageLabel]);
+  const text = full ? full.text : shown;
+  const prose = markdown && PROSE_RESULT_TOOLS.test(block.toolName ?? "");
+  const preview = prose ? proseHint(shown, 90) : firstLine(shown, 90);
   return (
     <Collapsible
       summary={
@@ -570,9 +655,15 @@ export function ToolResultBlock({
         onLoaded={setFull}
         onReset={() => setFull(null)}
       />
-      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11.5px] leading-relaxed text-foreground">
-        <MarkText text={text} regex={regex} />
-      </pre>
+      {prose ? (
+        <div className="max-h-[32rem] overflow-auto px-3 py-2">
+          <Markdown text={text} regex={regex} />
+        </div>
+      ) : (
+        <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11.5px] leading-relaxed text-foreground">
+          <MarkText text={text} regex={regex} />
+        </pre>
+      )}
       {block.truncated && !full && (
         <p className="px-3 pb-2 text-[11px] text-warning">{t("blockTruncatedNote")}</p>
       )}

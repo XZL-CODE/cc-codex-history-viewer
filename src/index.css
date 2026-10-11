@@ -282,6 +282,29 @@ select {
 .md-body strong {
   font-weight: 600;
 }
+/* 指向本地文件或相对路径的链接：不可点击，悬停看目标 */
+.md-body .md-local-link {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--muted);
+  text-underline-offset: 2px;
+  cursor: help;
+}
+/* Codex 的建议追问指令：「↪ 标签」小标签，悬停看完整提问 */
+.md-body .codex-directive {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.05em 0.55em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.85em;
+  cursor: help;
+}
+.md-body .codex-directive::before {
+  content: "↪";
+}
 
 /* highlight.js 词法着色（rehype-highlight 输出的 hljs-* 类） */
 .hljs-comment,

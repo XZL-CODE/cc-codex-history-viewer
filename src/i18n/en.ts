@@ -330,6 +330,7 @@ export const en: Record<keyof typeof zh, string> = {
   loadedMessages: "Showing {shown} / {total} messages",
   showAllMessages: "Show all",
   linkOpenExternal: "Open {url} in your browser",
+  linkLocalTarget: "Link target: {target} (not opened from the app)",
   remoteImageLink: "Remote image: {label}",
   toolResultOf: "{name} result",
   attachmentLabel: "Attachment",

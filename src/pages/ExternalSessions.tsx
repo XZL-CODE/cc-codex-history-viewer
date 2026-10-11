@@ -22,6 +22,7 @@ import {
 } from "@/hooks/queries";
 import { api, errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
+import { clipChars, plainSummary } from "@/lib/plainText";
 import type {
   ExternalImportItem,
   ExternalImportResult,
@@ -101,6 +102,8 @@ export function ExternalDeleteButton({
 }
 
 const EMPTY_SESSIONS: ExternalSessionSummary[] = [];
+/** 列表与导入结果里的标题长度：后端给的是提问的第一行，这里做纯文本摘要后截短 */
+const TITLE_CHARS = 80;
 const EMPTY_ERRORS: string[] = [];
 
 function ListSkeleton() {
@@ -142,7 +145,7 @@ function ImportResultRow({
               to={`/external/${encodeURIComponent(item.id)}`}
               className="min-w-0 max-w-[min(100%,28rem)] truncate text-accent hover:underline"
             >
-              {title || t("untitledSession")}
+              {clipChars(plainSummary(title ?? ""), TITLE_CHARS) || t("untitledSession")}
             </Link>
           )}
           {item.variant && (
@@ -182,7 +185,7 @@ function ExternalSessionRow({
             to={`/external/${encodeURIComponent(session.id)}`}
             className="line-clamp-2 text-sm font-medium text-foreground transition-colors hover:text-accent"
           >
-            {session.title || t("untitledSession")}
+            {clipChars(plainSummary(session.title), TITLE_CHARS) || t("untitledSession")}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
             <AgentBadge agent={session.agent} />
