@@ -19,6 +19,7 @@ import {
 } from "@/hooks/queries";
 import { useCopy } from "@/hooks/useCopy";
 import { useT } from "@/i18n";
+import { plainSummary } from "@/lib/plainText";
 import {
   Badge,
   Button,
@@ -178,7 +179,7 @@ export function ExternalConversation() {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h1 className="line-clamp-2 text-lg font-semibold text-foreground">
-              {summary.title || t("untitledSession")}
+              {plainSummary(summary.title) || t("untitledSession")}
             </h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <AgentBadge agent={summary.agent} />

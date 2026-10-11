@@ -18,6 +18,7 @@ use crate::models::{
 use chrono::{Local, NaiveDateTime, TimeZone};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -41,6 +42,13 @@ const IMAGE_PREFIX: &str = "🖼 ";
 /// 导出器给没有文字的图片写的占位文案，解析时还原成 None，由前端显示自己的占位。
 const IMAGE_FALLBACKS: [&str; 2] = ["[图片]", "[image]"];
 const SIDECHAIN_SUFFIXES: [&str; 2] = ["（子代理）", " (subagent)"];
+/// Codex 注入在提问前的上下文包装标题（去掉末尾冒号后比较）。
+const CONTEXT_WRAPPERS: [&str; 2] = [
+    "# Context from my IDE setup",
+    "# Files mentioned by the user",
+];
+/// 包装之后真正提问的标题（去掉末尾冒号后比较）。
+const REQUEST_HEADINGS: [&str; 2] = ["## My request for Codex", "## My request"];
 /// 消息标题里的说话人：(文案, role, 助手消息的产品)。
 const SPEAKERS: [(&str, &str, Option<Agent>); 4] = [
     ("🧑 用户", "user", None),
@@ -156,6 +164,8 @@ fn parse_normalized(text: &str) -> Result<ParsedExport, String> {
             usage: None,
         });
     }
+
+    pair_tool_results(&mut messages);
 
     let started_at = meta
         .started_at
@@ -619,6 +629,49 @@ fn consume_line(lines: &[&str], next: &mut usize, matches: fn(&str) -> bool) -> 
 }
 
 /// 标题：第一个首行不以 `<` 开头的用户文本块（跳过注入的包装），否则第一个用户文本块。
+/// 导出不记录工具结果来自哪个工具：按顺序把结果配给前面尚未配对的工具调用
+/// （Claude 与 Codex 都在调用之后紧接着写结果）。中间出现文本或思考说明这一轮调用已结束，
+/// 清空待配对队列，避免某个调用缺结果时后面全部错位。
+fn pair_tool_results(messages: &mut [ChatMessage]) {
+    let mut pending: VecDeque<String> = VecDeque::new();
+    for block in messages.iter_mut().flat_map(|message| &mut message.blocks) {
+        match block.kind.as_str() {
+            "tool_use" => pending.push_back(block.tool_name.clone().unwrap_or_default()),
+            "tool_result" => {
+                let name = pending.pop_front().filter(|name| !name.is_empty());
+                if block.tool_name.is_none() {
+                    block.tool_name = name;
+                }
+            }
+            "text" | "thinking" => pending.clear(),
+            _ => {}
+        }
+    }
+}
+
+/// Codex 把 IDE 上下文与提到的文件包在提问前面（`# Context from my IDE setup:` /
+/// `# Files mentioned by the user:`），真正的提问在最后一个 `## My request…:` 之后。
+fn request_text(text: &str) -> &str {
+    let first = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if !CONTEXT_WRAPPERS.contains(&first.trim_end_matches(':')) {
+        return text;
+    }
+    let mut offset = 0;
+    let mut request = None;
+    for line in text.split_inclusive('\n') {
+        offset += line.len();
+        let heading = line.trim().trim_end_matches(':');
+        if REQUEST_HEADINGS.contains(&heading) {
+            request = Some(offset);
+        }
+    }
+    request.map_or(text, |start| &text[start..])
+}
+
 fn session_title(messages: &[ChatMessage]) -> String {
     let user_texts = || {
         messages
@@ -639,7 +692,7 @@ fn session_title(messages: &[ChatMessage]) -> String {
         .find(|text| !first_line(text))
         .or_else(|| user_texts().next())
         .unwrap_or("");
-    export::shorten_title(text, export::TITLE_MAX_CHARS)
+    export::shorten_title(request_text(text), export::TITLE_MAX_CHARS)
 }
 
 /// 「只看对话」：与导出 include_tools=false 相同，只保留文本与图片块、丢弃变空的消息。
@@ -1905,6 +1958,50 @@ mod tests {
         let lf = parse_markdown(&markdown).unwrap();
         let cr = parse_markdown(&markdown.replace('\n', "\r")).unwrap();
         assert_same_messages(&cr.detail.messages, &lf.detail.messages, "cr only");
+    }
+
+    #[test]
+    fn tool_results_take_the_name_of_their_call_and_titles_skip_context_wrappers() {
+        let mut original = sample(Agent::Claude);
+        let result = |text: &str| block("tool_result", Some(text), None);
+        original.messages = vec![
+            message(
+                Agent::Claude,
+                "user",
+                minute(0),
+                false,
+                vec![text(
+                    "# Files mentioned by the user:\n\n## 报表.xlsx: C:/data/报表.xlsx\n\n## My request:\n**核对**报表里的金额",
+                )],
+            ),
+            message(Agent::Claude, "assistant", minute(1), false, vec![tool_use("Task", json!({"prompt": "调研"}))]),
+            message(Agent::Claude, "assistant", minute(1), false, vec![tool_use("Bash", json!({"command": "ls"}))]),
+            message(Agent::Claude, "user", minute(2), false, vec![result("## 结论")]),
+            message(Agent::Claude, "user", minute(2), false, vec![result("a.txt")]),
+            // 调用之后先出现文本：这一轮已结束，后面的结果不再错配
+            message(Agent::Claude, "assistant", minute(3), false, vec![tool_use("Read", json!({"file_path": "/a"}))]),
+            message(Agent::Claude, "assistant", minute(3), false, vec![text("被打断了")]),
+            message(Agent::Claude, "user", minute(4), false, vec![result("迟到的结果")]),
+        ];
+        let parsed =
+            parse_markdown(&build_conversation_markdown(&original, true, Lang::Zh)).unwrap();
+        let names: Vec<Option<&str>> = parsed
+            .detail
+            .messages
+            .iter()
+            .flat_map(|m| &m.blocks)
+            .filter(|b| b.kind == "tool_result")
+            .map(|b| b.tool_name.as_deref())
+            .collect();
+        assert_eq!(names, [Some("Task"), Some("Bash"), None]);
+        assert_eq!(parsed.title, "**核对**报表里的金额");
+
+        original.messages[0].blocks = vec![text(
+            "# Context from my IDE setup:\n\n## Active file: src/a.rs\n\n## My request for Codex:\n修一下侧栏",
+        )];
+        let parsed =
+            parse_markdown(&build_conversation_markdown(&original, false, Lang::En)).unwrap();
+        assert_eq!(parsed.title, "修一下侧栏");
     }
 
     #[test]

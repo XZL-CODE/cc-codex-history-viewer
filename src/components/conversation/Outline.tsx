@@ -1,6 +1,7 @@
 import { ListTree } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
 import { useT } from "@/i18n";
+import { clipChars, plainSummary } from "@/lib/plainText";
 import { absoluteTime, cn, formatCost, formatTokens, usageTotal } from "@/lib/utils";
 
 export interface OutlineTurn {
@@ -20,14 +21,14 @@ export function buildOutline(messages: ChatMessage[]): OutlineTurn[] {
     const text = message.blocks
       .filter((block) => block.kind === "text" && block.text)
       .map((block) => block.text as string)
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!text) return;
+      .join("\n");
+    if (!text.trim()) return;
+    // 预览是纯文本摘要（去掉 Markdown 标记、跳过 Codex 注入的上下文包装），正文仍是原文
+    const summary = plainSummary(text) || text.replace(/\s+/g, " ").trim();
     turns.push({
       index,
       message,
-      preview: text.length > 90 ? `${text.slice(0, 90)}…` : text,
+      preview: clipChars(summary, 90),
       tokens: 0,
       cost: null,
     });

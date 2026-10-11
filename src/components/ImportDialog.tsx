@@ -16,6 +16,7 @@ import {
 import { useSettings } from "@/hooks/queries";
 import { api, errMessage } from "@/lib/api";
 import { useT, type DictKey } from "@/i18n";
+import { plainSummary } from "@/lib/plainText";
 import { useStore } from "@/store";
 import type {
   ConflictDecision,
@@ -119,7 +120,7 @@ function SessionTitle({ session }: { session: PlannedSession }) {
   return (
     <div className="min-w-0">
       <div className="truncate text-xs font-medium text-foreground">
-        {session.title || t("untitledSession")}
+        {plainSummary(session.title) || t("untitledSession")}
       </div>
       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted">
         <span className="font-mono" title={session.sessionId}>

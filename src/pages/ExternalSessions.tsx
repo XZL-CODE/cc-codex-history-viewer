@@ -22,6 +22,7 @@ import {
 } from "@/hooks/queries";
 import { api, errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
+import { plainSummary } from "@/lib/plainText";
 import type {
   ExternalImportItem,
   ExternalImportResult,
@@ -142,7 +143,7 @@ function ImportResultRow({
               to={`/external/${encodeURIComponent(item.id)}`}
               className="min-w-0 max-w-[min(100%,28rem)] truncate text-accent hover:underline"
             >
-              {title || t("untitledSession")}
+              {plainSummary(title ?? "") || t("untitledSession")}
             </Link>
           )}
           {item.variant && (
@@ -182,7 +183,7 @@ function ExternalSessionRow({
             to={`/external/${encodeURIComponent(session.id)}`}
             className="line-clamp-2 text-sm font-medium text-foreground transition-colors hover:text-accent"
           >
-            {session.title || t("untitledSession")}
+            {plainSummary(session.title) || t("untitledSession")}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
             <AgentBadge agent={session.agent} />

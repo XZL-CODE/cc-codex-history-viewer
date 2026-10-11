@@ -13,6 +13,7 @@ import {
   formatTokens,
   usageContext,
 } from "@/lib/utils";
+import { clipChars, plainSummary } from "@/lib/plainText";
 import { Badge } from "@/components/ui";
 import { AgentBadge } from "@/components/AgentBadge";
 import { Collapsible } from "./Collapsible";
@@ -60,6 +61,9 @@ function ThinkingBlock({
 }) {
   const t = useT();
   const text = block.text ?? "";
+  // Codex 的思考摘要以「**标题**」开头：折叠时只显示去掉标记的首行
+  const firstLine = text.split("\n").find((line) => line.trim() !== "") ?? "";
+  const preview = clipChars(plainSummary(firstLine), 90);
   return (
     <Collapsible
       summary={
@@ -67,7 +71,7 @@ function ThinkingBlock({
           <Brain size={12} className="shrink-0 text-muted" />
           <span className="text-foreground">{t("thinkingLabel")}</span>
           <span className="min-w-0 truncate font-normal text-muted">
-            {text.trim().split("\n")[0]?.slice(0, 90)}
+            <MarkText text={preview} regex={regex} />
           </span>
         </>
       }
@@ -91,10 +95,13 @@ function ThinkingBlock({
 function BlockView({
   block,
   markdown,
+  toolMarkdown,
   regex,
 }: {
   block: ContentBlock;
   markdown: boolean;
+  /** 工具块里模型写的 Markdown（子代理报告、计划）是否渲染；只跟随开关，不看消息角色 */
+  toolMarkdown: boolean;
   regex: RegExp | null;
 }) {
   const t = useT();
@@ -104,9 +111,9 @@ function BlockView({
     case "thinking":
       return <ThinkingBlock block={block} markdown={markdown} regex={regex} />;
     case "tool_use":
-      return <ToolUseBlock block={block} regex={regex} />;
+      return <ToolUseBlock block={block} markdown={toolMarkdown} regex={regex} />;
     case "tool_result":
-      return <ToolResultBlock block={block} regex={regex} />;
+      return <ToolResultBlock block={block} markdown={toolMarkdown} regex={regex} />;
     case "attachment":
       return <AttachmentBlock block={block} regex={regex} />;
     case "image":
@@ -229,7 +236,13 @@ export const MessageBubble = memo(function MessageBubble({
       </div>
       <div className="space-y-2">
         {message.blocks.map((block, index) => (
-          <BlockView key={index} block={block} markdown={markdown} regex={regex} />
+          <BlockView
+            key={index}
+            block={block}
+            markdown={markdown}
+            toolMarkdown={renderMode === "rendered"}
+            regex={regex}
+          />
         ))}
       </div>
       {isSystem && message.agent === "claude" && (
