@@ -1,8 +1,11 @@
-# 发布桌面安装包：macOS 通用 dmg（Apple Silicon + Intel）与 Windows exe/msi。
+# 发布桌面安装包：macOS 通用 dmg（Apple Silicon + Intel）与 Windows exe/msi，以及应用内更新用的
+# 签名更新包和清单 latest.json。
 # 触发方式：推送 v* 标签、合并进 main 的提交改动了 .github/release-trigger、或在 Actions 页面手动运行；
-# Release 标签取 v<tauri.conf.json 版本>，Release 不存在时由工作流创建（标签指向当前提交）。
-# 产物由 tauri-action 上传到同名 GitHub Release。Release 正文 = .github/release-notes.md 里的本版
-# 更新内容（每次发版前更新）+ 下面 INSTALL_NOTES 里固定的安装说明（应用未签名的打开方法）。
+# Release 标签取 v<tauri.conf.json 版本>。产物由 tauri-action 上传到同名 GitHub Release。Release 正文 =
+# .github/release-notes.md 里的本版更新内容（每次发版前更新）+ 下面 INSTALL_NOTES 里固定的安装说明。
+# Release 先建成草稿，两个平台都上传成功后由 publish 任务发布（标签此时指向构建的提交）。草稿不算「最新」，
+# 应用读取的 releases/latest/download/latest.json 因此只会指向两个平台都齐全的一版；任一平台失败时 Release
+# 停在草稿。已发布的版本不要重跑，修复请升版本号再发。
 name: Release desktop builds
 
 on:
@@ -66,7 +69,10 @@ jobs:
 
             **Windows**：`*-setup.exe` 为 NSIS 安装包，`*.msi` 为 MSI 安装包。应用未签名，SmartScreen 提示时选择“更多信息 → 仍要运行”。
 
-            The app makes no network requests and reads Claude Code / Codex history locally only.
+            **更新**：v0.13.0 起应用会提示新版本，可在应用内一键更新；v0.12.0 及更早的版本需要手动下载安装一次。
+
+            应用只在检查和下载更新时访问 GitHub（可在设置中关闭自动检查），历史只在本机读取。
+            The app only contacts GitHub to check for and download updates (automatic checks can be turned off in Settings); history is read locally only.
         run: |
           {
             echo 'body<<RELEASE_BODY_EOF'
@@ -80,11 +86,31 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 更新包签名私钥与密码（仓库 Secret）。只有这里用得到：本机打包不生成更新包，不需要它们
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: Coding Agent History Viewer v__VERSION__
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
-          includeUpdaterJson: false
-          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          # Windows 两种安装包都写进 latest.json；没有安装方式信息时默认用 NSIS
+          updaterJsonPreferNsis: true
+          # tauri.updater.conf.json 打开 createUpdaterArtifacts：生成签名的更新包，tauri-action 据此写 latest.json
+          args: ${{ matrix.args }} --config src-tauri/tauri.updater.conf.json
           releaseBody: ${{ steps.notes.outputs.body }}
+
+  publish:
+    # 两个平台都上传成功后才把草稿发布出去，并标为最新版
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          gh release edit "v$version" --repo "$GITHUB_REPOSITORY" --draft=false --latest
