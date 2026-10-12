@@ -15,6 +15,7 @@ import { useStore } from "@/store";
 import { useLang, useT } from "@/i18n";
 import { cn, decodePath, isMac, modKeyLabel, pathBasename } from "@/lib/utils";
 import { SEARCH_PATH } from "@/lib/search";
+import { UpdateButton, UpdateDialog } from "./AppUpdate";
 import { ImportDialog } from "./ImportDialog";
 import { IndexProgressBar, indexProgressLabel } from "./IndexProgress";
 import { GLOBAL_SEARCH_INPUT_ID, SearchBar } from "./SearchBar";
@@ -165,6 +166,8 @@ export function Layout() {
             </span>
           )}
 
+          <UpdateButton />
+
           <button
             type="button"
             onClick={() => setIncludeCommands(!includeCommands)}
@@ -229,6 +232,7 @@ export function Layout() {
 
       <SettingsDialog open={settingsOpen} onClose={closeSettings} />
       <ImportDialog open={importOpen} onClose={closeImport} />
+      <UpdateDialog />
 
       <div className="grid min-h-0 min-w-0 grid-cols-[264px_minmax(0,1fr)] max-[1220px]:grid-cols-[248px_minmax(0,1fr)]">
         <Sidebar />
