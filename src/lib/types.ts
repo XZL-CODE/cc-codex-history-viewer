@@ -548,3 +548,22 @@ export interface SettingsView extends SettingsInput {
   configPath: string;
   resolved: ResolvedPaths;
 }
+
+/* ----------------------------- 应用内更新 ----------------------------- */
+
+/** 检查到的新版本，来自 GitHub Release 上的 latest.json */
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  /** 发布时间（RFC 3339），清单里没有时为 null */
+  date: string | null;
+  /** 更新说明，即 Release 正文 */
+  notes: string | null;
+}
+
+/** `update-progress` 事件：下载中汇报字节数，下载完成并核对签名后进入安装 */
+export interface UpdateProgress {
+  phase: "downloading" | "installing";
+  downloaded: number;
+  total: number | null;
+}

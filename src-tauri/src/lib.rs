@@ -11,6 +11,7 @@ pub mod parser;
 pub mod persisted;
 pub mod pricing;
 pub mod state;
+pub mod updater;
 pub mod usage_detail;
 
 use state::AppState;
@@ -22,7 +23,9 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
+        .manage(updater::PendingUpdate::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_projects,
             commands::get_project_prompts,
@@ -50,6 +53,8 @@ pub fn run() {
             commands::get_external_session,
             commands::keep_external_session,
             commands::delete_external_session,
+            updater::check_for_update,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

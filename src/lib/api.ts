@@ -33,6 +33,7 @@ import type {
   SettingsInput,
   SettingsView,
   SortMode,
+  UpdateInfo,
 } from "./types";
 
 export const api = {
@@ -217,6 +218,12 @@ export const api = {
     invoke<SettingsView>("set_settings", { settings }),
 
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+
+  /** 检查 GitHub Release 上有没有更高版本；有就在后端记下，等用户安装 */
+  checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
+
+  /** 下载、核对签名并安装检查到的更新，成功后应用会重启，通常不会返回 */
+  installUpdate: () => invoke<void>("install_update"),
 };
 
 /** 把后端返回的错误统一转成可读字符串 */

@@ -1,4 +1,4 @@
-// 设置弹窗：分别配置 Claude Code 与 Codex 的本地数据目录。
+// 设置弹窗：分别配置 Claude Code 与 Codex 的本地数据目录，维护索引，检查更新。
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { useT } from "@/i18n";
 import { useStore } from "@/store";
 import type { SettingsInput } from "@/lib/types";
 import { Badge, Button, Input, Spinner } from "@/components/ui";
+import { UpdateSettingsSection } from "./AppUpdate";
 import { indexProgressLabel } from "./IndexProgress";
 
 const EMPTY_FORM: SettingsInput = {
@@ -344,6 +345,8 @@ export function SettingsDialog({
                   </p>
                 )}
               </section>
+
+              <UpdateSettingsSection />
 
               {data && (
                 <div className="space-y-3 rounded-lg bg-surface-2/60 p-3">

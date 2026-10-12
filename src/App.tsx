@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { StoreProvider } from "@/store";
+import { UpdaterProvider } from "@/updater";
 import { Layout } from "@/components/Layout";
 import { Skeleton } from "@/components/ui";
 import { Home } from "@/pages/Home";
@@ -52,22 +53,30 @@ function ExternalConversationRoute() {
 export default function App() {
   return (
     <StoreProvider>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="export" element={<Export />} />
-          <Route path="search" element={<SearchResults />} />
-          <Route path="external" element={<ExternalSessions />} />
-          <Route path="external/:id" element={<ExternalConversationRoute />} />
-          <Route path="project/:encoded" element={<ProjectPrompts />} />
-          <Route
-            path="conversation/:agent/:sessionId"
-            element={<ConversationRoute />}
-          />
-          <Route path="conversation/:sessionId" element={<ConversationRoute />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+      <UpdaterProvider>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="export" element={<Export />} />
+            <Route path="search" element={<SearchResults />} />
+            <Route path="external" element={<ExternalSessions />} />
+            <Route
+              path="external/:id"
+              element={<ExternalConversationRoute />}
+            />
+            <Route path="project/:encoded" element={<ProjectPrompts />} />
+            <Route
+              path="conversation/:agent/:sessionId"
+              element={<ConversationRoute />}
+            />
+            <Route
+              path="conversation/:sessionId"
+              element={<ConversationRoute />}
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </UpdaterProvider>
     </StoreProvider>
   );
 }
