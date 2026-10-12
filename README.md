@@ -16,7 +16,7 @@
 
 ## 简体中文
 
-Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Claude Code 与 OpenAI Codex 的历史文件，按工作目录聚合 Prompt、会话、工具调用和 Token 用量。应用不联网，也不会把历史上传到任何服务。
+Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Claude Code 与 OpenAI Codex 的历史文件，按工作目录聚合 Prompt、会话、工具调用和 Token 用量。应用只在检查和下载更新时访问 GitHub，不会把历史上传到任何服务。
 
 ### 功能
 
@@ -36,6 +36,7 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 - 统计每日活动、小时与星期分布、项目排行、模型、CLI 版本、Token、缓存命中率和估算成本。
 - 按文件 `mtime` 建立增量索引，并行扫描大历史库；JSONL 按行流式解析。索引在后台线程构建并实时显示进度，刷新默认只重解析变化的文件，全量重建放在设置中。
 - 搜索是独立路由，返回键可回到结果列表；记住窗口位置与尺寸；主题可跟随系统。
+- **应用内更新**：启动后自动检查 GitHub 上的新版本（每天最多一次，可在设置中关闭），发现后在顶栏提示；点「立即更新」下载、核对签名后安装并重新打开应用。详见[应用内更新](#应用内更新)。
 - 任一产品的数据目录不存在时，仍可正常浏览另一个产品的数据。
 
 ### 快捷键
@@ -219,14 +220,23 @@ Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/t
 
 @ 引用或上传的文件内容记录在 `attachment` 行里，详情页以「附件：文件名」折叠块紧跟在对应用户消息之后，导出包含工具调用时一并写入。云端会话的 thinking 块只有 signature、正文为空，这类块不再显示。
 
+### 应用内更新
+
+应用读取本仓库最新 Release 里的 `latest.json`，版本号比当前高才提示。设计决定见 [Agent Note：应用内检查更新与一键更新](.agents/notes/implemented/2026-10-11-in-app-updates.md)。
+
+- **检查**：启动后自动检查，每天最多一次；上次发现的新版本还没装时，每次启动都会再查，让提示一直在。检查失败不弹提示，原因显示在设置的「更新」里。设置里可以关闭自动检查，也可以随时手动检查。
+- **安装**：点顶栏的「新版本」查看更新内容，再点「立即更新」。更新包下载后先用应用内置的公钥核对签名，对不上就拒绝安装。macOS 原地替换应用后重新打开；Windows 由安装程序装完再打开（只显示进度条），msi 版会请求一次管理员确认。设置、索引缓存与保留的外部会话都在应用数据目录，更新不受影响。
+- **网络**：请求跟随系统代理。连不上 GitHub 时，可在设置里点「打开下载页」手动下载。
+- **第一次**：v0.12.0 及更早的版本没有这项功能，需要手动下载安装一次 v0.13.0 或更新的版本。
+
 ### 隐私边界
 
 - 不读取 Codex `auth.json`。
 - 不把 Codex 私有 SQLite 表作为主要数据源。
-- 不联网、不上传、不遥测历史内容。
+- 不上传、不遥测历史内容。联网只用于检查和下载更新：只请求本仓库 GitHub Release 上的版本清单和更新包，请求里不带任何历史内容；自动检查可在设置中关闭。
 - 不修改或删除 `~/.codex` 及自定义 Codex 目录中的任何内容；对 `~/.claude` 唯一的写入是用户主动确认的会话导入，且只写 `projects/<目录名>/` 之下的会话文件，只覆盖同名文件，绝不删除。
-- 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件、用户主动导入的会话文件，以及用户选择保留的外部会话 Markdown（应用数据目录内）；全文搜索按需读取会话文件，不写任何索引。
-- 对话里的链接只在用户点击时交给系统浏览器打开，应用本身不发起任何网络请求。
+- 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件、用户主动导入的会话文件、用户选择保留的外部会话 Markdown（应用数据目录内），以及用户确认安装更新时替换应用自身；全文搜索按需读取会话文件，不写任何索引。
+- 对话里的链接只在用户点击时交给系统浏览器打开。本机会话 Markdown 里的远程图片会由界面直接加载；外部会话里的远程图片只显示为链接。
 
 ### 开发与验证
 
@@ -254,7 +264,7 @@ pnpm build
 
 ## English
 
-Coding Agent History Viewer is a Tauri desktop application that scans Claude Code and OpenAI Codex history locally and groups prompts, sessions, tool calls, and token usage by working directory. It makes no network requests and does not upload history.
+Coding Agent History Viewer is a Tauri desktop application that scans Claude Code and OpenAI Codex history locally and groups prompts, sessions, tool calls, and token usage by working directory. It only contacts GitHub to check for and download updates, and never uploads history.
 
 ### Features
 
@@ -274,6 +284,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
 - Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache. The index builds on a background thread with live progress; refresh re-parses only changed files, and a full rebuild lives in Settings.
 - Search is its own route so the back button returns to results; window position and size are remembered; the theme can follow the system.
+- **In-app updates**: checks GitHub for a newer version at startup (at most once a day; can be turned off in Settings) and shows it in the toolbar; "Update now" downloads it, verifies its signature, installs it and reopens the app. See [In-app updates](#in-app-updates).
 - Continue working when either product's data directory is absent.
 
 ### Keyboard shortcuts
@@ -359,7 +370,7 @@ The index builds on a background thread and reports progress while other queries
 
 Full-text conversation search builds no index: each search streams the session files in the current scope in parallel, prefilters raw lines with a case-insensitive byte search, and parses only matching lines. It covers user messages, assistant replies, thinking summaries, and tool-call inputs; tool results (file contents, command output) and injected developer/system or `AGENTS.md` context never match. Every keyword must appear in the same message. At most 20 hits per session and 300 in total are returned, with a notice when results are truncated.
 
-The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, Markdown files explicitly exported by the user, and external-session Markdown the user chose to keep (inside the app's data directory). Links inside conversations open in the system browser only when clicked.
+The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, Markdown files explicitly exported by the user, external-session Markdown the user chose to keep (inside the app's data directory), and its own application files when the user installs an update. Its only network traffic is the update check and download from this repository's GitHub Releases, which carries no history; the automatic check can be turned off in Settings. Links inside conversations open in the system browser only when clicked; remote images in local conversations load directly, while those in external sessions show as links.
 
 ### Importing Claude Code sessions
 
@@ -386,6 +397,15 @@ A single-conversation Markdown file that someone else exported with this app (th
 - **Fidelity**: messages show the minute-level time printed in the file; several text blocks of one message merge into one; tool-call inputs are restored as JSON and render semantically; tool results name their tool (inferred from call order for older exports); tool results and attachments keep the exported full text without the display clip used for local sessions. Exports carry no per-call usage, so the token usage panel is hidden and only the file header's token total and estimated cost are shown.
 - **Temporary or kept**: imports live in memory and disappear when the app quits. "Keep" copies the original Markdown into `external_sessions/<agent>-<session id>/` under the app's data directory and loads it on the next launch; importing a new version of a kept session writes it there too. "Delete" removes the entry and, for a kept one, that directory.
 - **Isolation**: external sessions are never written to `~/.claude` or `~/.codex`, never appear in the project list, overview stats, prompt search, full-text search or token totals, and offer no re-export or resume command. Remote images referenced in their Markdown are never loaded; they show as "Remote image: …" links that open in the system browser only when clicked, so the sender cannot learn from an image request that you opened the file.
+
+### In-app updates
+
+The app reads `latest.json` from this repository's latest Release and offers an update only when its version is higher. See the [Agent Note](.agents/notes/implemented/2026-10-11-in-app-updates.md) for the design decision.
+
+- **Checking**: automatic at startup, at most once a day; while a newer version found earlier is still not installed, every launch checks again so the notice stays. A failed check shows no popup; the reason appears under "Updates" in Settings, where automatic checks can be turned off and a check can be run at any time.
+- **Installing**: open the toolbar's update button to read the release notes, then click "Update now". The package's signature is verified against the public key built into the app before anything is installed. macOS replaces the app in place and reopens it; on Windows the installer runs with a progress bar only and reopens the app (the MSI asks for administrator approval once). Settings, the index cache and kept external sessions live in the app's data directory and survive updates.
+- **Network**: requests follow the system proxy. If GitHub cannot be reached, "Open download page" in Settings opens the Release page in the browser.
+- **First time**: v0.12.0 and earlier lack this feature; install v0.13.0 or later manually once.
 
 ### Persisted tool outputs and attachments
 
