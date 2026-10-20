@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type KeyboardEvent } from "react";
+import { useCallback, useMemo, useRef, type KeyboardEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Folder, Globe, Search, X } from "lucide-react";
 import { useStore, type SearchScope } from "@/store";
@@ -17,6 +17,9 @@ export const GLOBAL_SEARCH_INPUT_ID = "global-search-input";
 /**
  * 顶栏搜索框。搜索页以 URL 为准：输入时用 replace 更新查询参数，
  * 从其他页面开始搜索时 push 一条 /search 记录，因此结果页可以用返回键回到。
+ *
+ * 输入法组字期间只同步输入框，上屏（compositionend）后才搜索：WebKit 上屏时先删掉组字
+ * 文本并派发 input（只有组字时值为空），再插入结果，按空值处理会被当成清空而离开搜索页。
  */
 export function SearchBar() {
   const { query, setQuery, scope, setScope, currentProject, currentProjectName } =
@@ -24,6 +27,7 @@ export function SearchBar() {
   const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
+  const composingRef = useRef(false);
   const onSearchPage = location.pathname === SEARCH_PATH;
   const urlState = useMemo(
     () => parseSearchParams(location.search),
@@ -66,13 +70,24 @@ export function SearchBar() {
     else navigate("/", { replace: true });
   }, [onSearchPage, navigate, setQuery]);
 
-  const onChange = (value: string) => {
-    setQuery(value);
+  const search = (value: string) => {
     if (value.trim()) go({ q: value }, onSearchPage);
     else leaveSearch();
   };
 
+  const onChange = (value: string) => {
+    setQuery(value);
+    if (!composingRef.current) search(value);
+  };
+
+  const onCompositionEnd = (value: string) => {
+    composingRef.current = false;
+    search(value);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // 组字中的按键交给输入法；WebKit 在 compositionend 之后才派发，keyCode 为 229
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key !== "Escape") return;
     event.preventDefault();
     if (query) leaveSearch();
@@ -99,6 +114,12 @@ export function SearchBar() {
           id={GLOBAL_SEARCH_INPUT_ID}
           value={query}
           onChange={(event) => onChange(event.target.value)}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={(event) =>
+            onCompositionEnd(event.currentTarget.value)
+          }
           onKeyDown={onKeyDown}
           placeholder={
             effectiveScope === "folder" && folderName
