@@ -6,7 +6,24 @@ use crate::models::{
 };
 use crate::parser::UsageEntry;
 use crate::pricing;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+/// Known efforts from lowest to highest across Claude Code and Codex. Values outside this list
+/// sort after them, alphabetically; calls with no recorded effort sort last.
+const EFFORT_ORDER: [&str; 6] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+
+fn effort_rank(effort: Option<&str>) -> (usize, &str) {
+    match effort {
+        Some(value) => (
+            EFFORT_ORDER
+                .iter()
+                .position(|known| *known == value)
+                .unwrap_or(EFFORT_ORDER.len()),
+            value,
+        ),
+        None => (EFFORT_ORDER.len() + 1, ""),
+    }
+}
 
 #[derive(Default)]
 struct ModelAggregate {
@@ -39,14 +56,16 @@ pub fn attach_usage_breakdown(detail: &mut ConversationDetail, calls: &[(&UsageE
         }
     }
 
-    let mut by_model: BTreeMap<&str, ModelAggregate> = BTreeMap::new();
+    let mut by_model: BTreeMap<(&str, Option<&str>), ModelAggregate> = BTreeMap::new();
     let mut cost_parts = CostParts::default();
     let mut est_cost_no_cache_usd = 0.0;
     let mut timeline = Vec::with_capacity(calls.len());
     for (entry, subagent) in calls {
         let parts = pricing::estimate_cost_parts(agent, &entry.model, entry.usage);
         let no_cache = pricing::estimate_cost_without_cache(agent, &entry.model, entry.usage);
-        let aggregate = by_model.entry(entry.model.as_str()).or_default();
+        let aggregate = by_model
+            .entry((entry.model.as_str(), entry.effort.as_deref()))
+            .or_default();
         aggregate.calls += 1;
         aggregate.usage.add_assign(entry.usage);
         match (parts, no_cache) {
@@ -63,15 +82,22 @@ pub fn attach_usage_breakdown(detail: &mut ConversationDetail, calls: &[(&UsageE
             timestamp: entry.timestamp,
             model: entry.model.clone(),
             usage: entry.usage,
+            effort: entry.effort.clone(),
             est_cost_usd: parts.map(CostParts::total),
             subagent: *subagent,
         });
     }
 
+    let mut model_totals: HashMap<String, u64> = HashMap::new();
+    for ((model, _), aggregate) in &by_model {
+        *model_totals.entry((*model).to_string()).or_default() +=
+            aggregate.usage.total_tokens_including_cache();
+    }
     let mut by_model: Vec<SessionModelUsage> = by_model
         .into_iter()
-        .map(|(model, aggregate)| SessionModelUsage {
+        .map(|((model, effort), aggregate)| SessionModelUsage {
             model: model.to_string(),
+            effort: effort.map(str::to_string),
             calls: aggregate.calls,
             usage: aggregate.usage,
             total_tokens_including_cache: aggregate.usage.total_tokens_including_cache(),
@@ -80,10 +106,12 @@ pub fn attach_usage_breakdown(detail: &mut ConversationDetail, calls: &[(&UsageE
         })
         .collect();
     by_model.sort_by(|left, right| {
-        right
-            .total_tokens_including_cache
-            .cmp(&left.total_tokens_including_cache)
+        model_totals[&right.model]
+            .cmp(&model_totals[&left.model])
             .then_with(|| left.model.cmp(&right.model))
+            .then_with(|| {
+                effort_rank(left.effort.as_deref()).cmp(&effort_rank(right.effort.as_deref()))
+            })
     });
 
     detail.usage_breakdown = UsageBreakdown {
@@ -119,6 +147,19 @@ mod tests {
             timestamp,
             project: "/synthetic".to_string(),
             usage,
+            effort: None,
+        }
+    }
+
+    fn entry_at(
+        key: &str,
+        model: &str,
+        effort: Option<&str>,
+        usage: NormalizedUsage,
+    ) -> UsageEntry {
+        UsageEntry {
+            effort: effort.map(str::to_string),
+            ..entry(key, model, 0, usage)
         }
     }
 
@@ -146,6 +187,7 @@ mod tests {
             call_key: key.to_string(),
             model: model.to_string(),
             usage,
+            effort: None,
             est_cost_usd: None,
             attributed: true,
         })
@@ -258,6 +300,63 @@ mod tests {
         assert!(
             (sonnet.est_cost_no_cache_usd.unwrap() - breakdown.est_cost_no_cache_usd).abs() < 1e-12
         );
+    }
+
+    #[test]
+    fn splits_each_model_by_effort_and_keeps_a_models_rows_together() {
+        const OPUS: &str = "claude-opus-4-5-20251101";
+        const SONNET: &str = "claude-sonnet-4-5-20250929";
+        let index_calls = [
+            entry_at("1", SONNET, Some("high"), usage(5_000, 0, 10)),
+            entry_at("2", OPUS, Some("xhigh"), usage(1_000, 0, 10)),
+            entry_at("3", OPUS, None, usage(100, 0, 10)),
+            entry_at("4", OPUS, Some("high"), usage(2_000, 0, 10)),
+            entry_at("5", OPUS, Some("custom"), usage(10, 0, 10)),
+            entry_at("6", OPUS, Some("xhigh"), usage(3_000, 0, 10)),
+        ];
+        let calls: Vec<(&UsageEntry, bool)> =
+            index_calls.iter().map(|entry| (entry, false)).collect();
+        let mut detail = detail(Vec::new());
+        attach_usage_breakdown(&mut detail, &calls);
+
+        let breakdown = &detail.usage_breakdown;
+        assert_eq!(
+            breakdown
+                .calls
+                .iter()
+                .map(|call| call.effort.as_deref())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("high"),
+                Some("xhigh"),
+                None,
+                Some("high"),
+                Some("custom"),
+                Some("xhigh")
+            ]
+        );
+        // Opus has more tokens in total (6.2k vs 5k) though no single Opus row beats Sonnet.
+        assert_eq!(
+            breakdown
+                .by_model
+                .iter()
+                .map(|row| (row.model.as_str(), row.effort.as_deref(), row.calls))
+                .collect::<Vec<_>>(),
+            vec![
+                (OPUS, Some("high"), 1),
+                (OPUS, Some("xhigh"), 2),
+                (OPUS, Some("custom"), 1),
+                (OPUS, None, 1),
+                (SONNET, Some("high"), 1),
+            ]
+        );
+        assert_eq!(breakdown.by_model[1].usage.uncached_input, 4_000);
+        let row_sum: u64 = breakdown
+            .by_model
+            .iter()
+            .map(|row| row.total_tokens_including_cache)
+            .sum();
+        assert_eq!(row_sum, 5_010 + 6_110 + 50);
     }
 
     #[test]

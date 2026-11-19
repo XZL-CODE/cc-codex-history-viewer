@@ -5,8 +5,8 @@ use crate::models::{
     SessionUsage, UsageBreakdown,
 };
 use crate::parser::{
-    clip_to, for_each_jsonl_line, stable_hash, BlockLimit, ConvFileResult, RawPrompt, UsageEntry,
-    DISPLAY_BLOCK_LIMIT,
+    clip_to, effort_value, for_each_jsonl_line, stable_hash, BlockLimit, ConvFileResult, RawPrompt,
+    UsageEntry, DISPLAY_BLOCK_LIMIT,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -47,6 +47,8 @@ struct RolloutAccumulator {
     fallback_project: Option<String>,
     current_cwd: Option<String>,
     current_model: Option<String>,
+    /// `turn_context.effort` of the turn in progress; every call in the turn shares it.
+    current_effort: Option<String>,
     current_turn_id: Option<String>,
     models: Vec<String>,
     earliest_timestamp: Option<i64>,
@@ -80,6 +82,7 @@ impl RolloutAccumulator {
             fallback_project: None,
             current_cwd: None,
             current_model: None,
+            current_effort: None,
             current_turn_id: None,
             models: Vec::new(),
             earliest_timestamp: None,
@@ -175,6 +178,9 @@ impl RolloutAccumulator {
     }
 
     fn process_turn_context(&mut self, payload: &Value) {
+        // Each turn states its own effort; a turn without one leaves it unrecorded rather than
+        // inheriting the previous turn's.
+        self.current_effort = effort_value(payload.get("effort"));
         if let Some(model) = nonempty_string(payload.get("model")) {
             self.current_model = Some(model.clone());
             self.add_model(model);
@@ -331,6 +337,7 @@ impl RolloutAccumulator {
                     call_key: dedup_key.clone(),
                     model: model.clone(),
                     usage,
+                    effort: self.current_effort.clone(),
                     est_cost_usd: None,
                     attributed: true,
                 },
@@ -347,6 +354,7 @@ impl RolloutAccumulator {
                 .or_else(|| self.fallback_project.clone())
                 .unwrap_or_default(),
             usage,
+            effort: self.current_effort.clone(),
         });
     }
 
@@ -1174,7 +1182,7 @@ mod tests {
             &format!(
                 concat!(
                     "{{\"timestamp\":\"2026-01-02T00:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/synthetic/main\",\"cli_version\":\"1.2.3\",\"source\":\"cli\",\"timestamp\":\"2026-01-02T00:00:00.000Z\"}}}}\n",
-                    "{{\"timestamp\":\"2026-01-02T00:00:01.000Z\",\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"turn-1\",\"cwd\":\"/synthetic/main\",\"model\":\"gpt-codex-a\"}}}}\n",
+                    "{{\"timestamp\":\"2026-01-02T00:00:01.000Z\",\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"turn-1\",\"cwd\":\"/synthetic/main\",\"model\":\"gpt-codex-a\",\"effort\":\"xhigh\"}}}}\n",
                     "{{\"timestamp\":\"2026-01-02T00:00:02.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"real prompt\"}}}}\n",
                     "{{\"timestamp\":\"2026-01-02T00:00:02.100Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"duplicate fallback\"}}]}}}}\n",
                     "{{\"timestamp\":\"2026-01-02T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"last_token_usage\":{{\"input_tokens\":100,\"cached_input_tokens\":40,\"output_tokens\":20,\"reasoning_output_tokens\":5,\"total_tokens\":120}},\"total_token_usage\":{{\"input_tokens\":999999,\"output_tokens\":999999}}}}}}}}\n",
@@ -1207,6 +1215,11 @@ mod tests {
             }
         );
         assert_eq!(result.usage_entries[1].model, "gpt-codex-b");
+        assert_eq!(result.usage_entries[0].effort.as_deref(), Some("xhigh"));
+        assert_eq!(
+            result.usage_entries[1].effort, None,
+            "a turn without effort does not inherit the previous turn's"
+        );
     }
 
     #[test]
@@ -1217,7 +1230,7 @@ mod tests {
             &format!(
                 concat!(
                     "{{\"timestamp\":\"2026-01-03T00:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/synthetic/main\",\"source\":\"cli\"}}}}\n",
-                    "{{\"timestamp\":\"2026-01-03T00:00:01.000Z\",\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"turn-1\",\"model\":\"gpt-codex-a\"}}}}\n",
+                    "{{\"timestamp\":\"2026-01-03T00:00:01.000Z\",\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"turn-1\",\"model\":\"gpt-codex-a\",\"effort\":\"medium\"}}}}\n",
                     "{{\"timestamp\":\"2026-01-03T00:00:02.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"last_token_usage\":{{\"input_tokens\":30,\"cached_input_tokens\":0,\"output_tokens\":3}}}}}}}}\n",
                     "{{\"timestamp\":\"2026-01-03T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"prompt\"}}}}\n",
                     "{{\"timestamp\":\"2026-01-03T00:00:04.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"agent_message\",\"message\":\"reply\"}}}}\n",
@@ -1243,6 +1256,7 @@ mod tests {
             "the reply keeps the first count after it; the leading and trailing counts have no message"
         );
         assert_eq!(usage.usage.uncached_input, 60);
+        assert_eq!(usage.effort.as_deref(), Some("medium"));
     }
 
     #[test]

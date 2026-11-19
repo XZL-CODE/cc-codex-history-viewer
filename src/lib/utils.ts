@@ -118,6 +118,19 @@ export function usageContext(row: CallTokenFields): number {
   return row.uncachedInput + row.cacheRead + row.cacheCreation;
 }
 
+/** Claude Code 与 Codex 已知的推理档位，从低到高；其余值排在后面按字母序，未记录排最后 */
+const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"];
+
+/** 按推理档位从低到高比较，与后端按模型表的行序一致 */
+export function compareEffort(left: string | null, right: string | null): number {
+  const rank = (effort: string | null) => {
+    if (effort === null) return EFFORT_ORDER.length + 1;
+    const index = EFFORT_ORDER.indexOf(effort);
+    return index === -1 ? EFFORT_ORDER.length : index;
+  };
+  return rank(left) - rank(right) || (left ?? "").localeCompare(right ?? "");
+}
+
 /** 缓存命中率 = 缓存读 ÷（非缓存输入 + 缓存读）；分母为 0 时为 null */
 export function cacheHitRate(row: CallTokenFields): number | null {
   const denominator = row.uncachedInput + row.cacheRead;

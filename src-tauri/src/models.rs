@@ -751,6 +751,8 @@ pub struct MessageUsage {
     pub model: String,
     #[serde(flatten)]
     pub usage: NormalizedUsage,
+    /// Reasoning effort as recorded (`xhigh`, `medium`, ...); `None` when not recorded.
+    pub effort: Option<String>,
     /// `None` when the model has no known pricing.
     pub est_cost_usd: Option<f64>,
     /// False when the index attributes this call to another session: a fork/resume copied it
@@ -768,15 +770,19 @@ pub struct UsageCall {
     pub model: String,
     #[serde(flatten)]
     pub usage: NormalizedUsage,
+    /// Reasoning effort as recorded (`xhigh`, `medium`, ...); `None` when not recorded.
+    pub effort: Option<String>,
     pub est_cost_usd: Option<f64>,
     pub subagent: bool,
 }
 
-/// The session's attributed calls split by model.
+/// The session's attributed calls split by model and, within a model, by reasoning effort.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionModelUsage {
     pub model: String,
+    /// The effort these calls share; `None` groups the calls that recorded none.
+    pub effort: Option<String>,
     pub calls: usize,
     #[serde(flatten)]
     pub usage: NormalizedUsage,
@@ -794,7 +800,8 @@ pub struct SessionModelUsage {
 pub struct UsageBreakdown {
     /// In timestamp order, sub-agent calls included.
     pub calls: Vec<UsageCall>,
-    /// Sorted by total tokens, largest first.
+    /// One row per model and effort. Models are ordered by their total tokens, largest first;
+    /// a model's rows stay together, in effort order (`minimal` → `max`, unrecorded last).
     pub by_model: Vec<SessionModelUsage>,
     pub cost_parts: CostParts,
     /// Known-model cost had nothing been cached (all input at the uncached rate).
@@ -920,6 +927,7 @@ mod tests {
                 output: 4,
                 reasoning_output: 0,
             },
+            effort: Some("xhigh".to_string()),
             est_cost_usd: None,
             attributed: true,
         };
@@ -928,6 +936,7 @@ mod tests {
         assert_eq!(json["cacheRead"], 2);
         assert_eq!(json["cacheCreation1h"], 1);
         assert!(json["estCostUsd"].is_null());
+        assert_eq!(json["effort"], "xhigh");
         let back: MessageUsage = serde_json::from_value(json).unwrap();
         assert_eq!(back, usage);
     }
