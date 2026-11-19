@@ -4,269 +4,17 @@
 
 # Coding Agent History Viewer
 
-**本地、只读地浏览 Claude Code 与 OpenAI Codex 的 Prompt、会话和用量**
-
 **A local, read-only viewer for Claude Code and OpenAI Codex history**
 
-[简体中文](#简体中文) · [English](#english)
+English · [简体中文](./README.zh-CN.md)
 
 </div>
 
 ---
 
-## 简体中文
-
-Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Claude Code 与 OpenAI Codex 的历史文件，按工作目录聚合 Prompt、会话、工具调用和 Token 用量。应用只在检查和下载更新时访问 GitHub，不会把历史上传到任何服务。
-
-### 功能
-
-- 在概览顶部按 **Claude Code / Codex / 全部** 筛选，默认选择“全部”并在本机持久化选择。
-- 按工作目录浏览项目、Prompt 和会话；“全部”模式下相同 `cwd` 合并为一个项目。
-- 查看最近 Prompt、全局搜索、文件夹内搜索、完整会话、Markdown、工具调用和思考内容。
-- **全文搜索会话内容**：除 Prompt 外，还能按需扫描助手回复、思考摘要与工具调用参数，命中可跳转到对话中的具体消息并高亮关键词；不建索引、不落盘。
-- **对话详情**：助手回复、思考与子代理报告 / 计划按 Markdown 渲染并高亮代码，中文标点旁的粗体与删除线、段内换行都按原意显示；Codex 的建议追问显示为「↪」小标签，指向本地文件的链接悬停显示路径。顶部可切换「Markdown / 原文」，选择会被记住；用户消息与命令输出始终显示原文。Bash/Edit/Write/Read/TodoWrite 与 Codex apply_patch 等工具调用按语义展示（命令、行级 diff、补丁、清单）；会话内查找、用户轮次大纲（预览为去掉标记的纯文本）、全部展开/折叠、超长会话分批渲染。渲染规则见 [Agent Note：对话 Markdown 的渲染规则](.agents/notes/implemented/2026-10-11-conversation-markdown-rendering.md)。
-- **每会话 Token 与成本**：会话列表可按最新 / 成本 / 消息数 / 时长排序；fork/resume 复制的调用只计入原会话，各会话之和等于全局总量。
-- **会话内 Token 用量明细**：对话详情页可展开「Token 用量明细」面板：总量 / 成本 / 输入 / 输出 / 缓存命中率五张指标卡（附平均每次调用上下文、每轮平均成本、子代理占比、缓存 5m / 1h 分档、相比不用缓存节省多少），Token 与成本构成条，按调用顺序的堆叠柱图（点击跳到对应消息），多模型会话再加按模型拆分表；每条助手消息带本次调用的上下文 / 输出 / 成本小标签，大纲里每个用户轮次显示本轮 Token 与成本。
-- **批量导出会话**：在文件夹页的「会话」标签页勾选多个会话一次导出，可合成一份 Markdown（带目录表），或每个会话一份并附 index.md；可选是否包含工具调用与思考过程。单会话与批量导出都走不截断的解析路径，超长工具结果完整保留。
-- **导入 Claude Code 会话**：把云端 Claude Code（claude.ai/code）打包的 zip 导入本机 projects 目录，之后与本机会话一样检索、查看和导出。导入前先生成计划，逐会话判定新增 / 更新 / 跳过 / 冲突，冲突逐个选择「保留本机」或「用导入的覆盖」；云端的 `/home/user/<仓库名>` 可映射到本机目录，映射会被记住。详见[导入 Claude Code 会话](#导入-claude-code-会话)。
-- **外部会话（临时查看他人导出的 Markdown）**：在侧栏「外部会话」导入别人用本应用导出的单会话 Markdown，用同一套对话详情阅读。同一会话的详细版与简洁版合并为一条，可在「完整 / 只看对话」之间切换。默认只在本次运行中保留，点「保留」才复制到应用数据目录；不写入 `~/.claude` 或 `~/.codex`，不计入统计与搜索。详见[外部会话](#外部会话)。
-- **对话详情补充**：`<persisted-output>` 标记的超大工具输出可在详情里按需展开完整内容，导出时内联；@ 引用或上传的文件以「附件」折叠块显示；只有 signature、正文为空的思考块不再显示。
-- **统计范围与活跃度日历**：概览支持全部 / 近 7 天 / 近 30 天 / 本月 / 自定义区间，日历热力图补齐没有记录的日期。
-- Prompt、会话和导出内容保留 Claude Code 或 Codex 来源标识。
-- 统计每日活动、小时与星期分布、项目排行、模型、CLI 版本、Token、缓存命中率和估算成本。
-- 按文件 `mtime` 建立增量索引，并行扫描大历史库；JSONL 按行流式解析。索引在后台线程构建并实时显示进度，刷新默认只重解析变化的文件，全量重建放在设置中。
-- 搜索是独立路由，返回键可回到结果列表；记住窗口位置与尺寸；主题可跟随系统。
-- **应用内更新**：启动后自动检查 GitHub 上的新版本（每天最多一次，可在设置中关闭），发现后在顶栏提示；点「立即更新」下载、核对签名后安装并重新打开应用。详见[应用内更新](#应用内更新)。
-- 任一产品的数据目录不存在时，仍可正常浏览另一个产品的数据。
-
-### 快捷键
-
-| 快捷键 | 作用 |
-|---|---|
-| ⌘/Ctrl + K | 聚焦搜索框 |
-| Esc | 清空搜索并返回上一页 / 关闭设置 |
-| ⌘/Ctrl + R、F5 | 增量刷新本地数据 |
-| ⌘/Ctrl + , | 打开设置 |
-| ⌘/Ctrl + F（对话详情内） | 会话内查找，Enter / Shift+Enter 切换命中 |
-
-### 数据路径
-
-#### Claude Code
-
-| 数据 | 默认路径 | 用途 |
-|---|---|---|
-| Prompt 历史 | `~/.claude/history.jsonl` | 输入框历史 |
-| 完整会话 | `~/.claude/projects/**/*.jsonl` | 用户/助手消息、工具调用和用量 |
-| 会话元数据 | `~/.claude/sessions/*.json` | CLI 版本等补充信息 |
-
-设置中的 `historyFile`、`projectsDir`、`sessionsDir` 可分别覆盖路径；否则从 `claudeDataDir` 推导；仍未配置时使用 `~/.claude`。这些旧字段继续兼容已有 `settings.json`。`importPathMappings` 记录导入会话时确认过的云端目录到本机目录的映射，可在设置里删除。
-
-#### OpenAI Codex
-
-| 数据 | 默认路径 | 用途 |
-|---|---|---|
-| Prompt 历史 | `<CODEX_ROOT>/history.jsonl` | `session_id`、`text`、`ts` |
-| 当前会话 | `<CODEX_ROOT>/sessions/YYYY/MM/DD/rollout-*.jsonl` | 完整事件流 |
-| 归档会话 | `<CODEX_ROOT>/archived_sessions/*.jsonl` | 已归档事件流 |
-
-`CODEX_ROOT` 的优先级固定为：
-
-1. 设置中的 `codexDataDir`
-2. 环境变量 `CODEX_HOME`
-3. `~/.codex`
-
-设置页会分别显示两种产品的配置值、最终解析路径和存在状态。保存设置后重新建立索引，无需重新编译。旧版仅含 Claude 字段的设置文件会自动按默认值补齐 Codex 配置。
-
-设置文件位于系统应用配置目录。macOS 默认是：
-
-```text
-~/Library/Application Support/com.xzl.cchistoryviewer/settings.json
-```
-
-为兼容旧开发环境，源码根目录的 `settings.json` 仍可作为低优先级回退。示例见 [`settings.example.json`](./settings.example.json)。bundle identifier `com.xzl.cchistoryviewer` 保持不变，因此原有应用配置目录不会丢失。
-
-### Codex 格式兼容
-
-- 从 `session_meta` 读取会话 ID、`cwd`、CLI 版本和客户端来源，从最近的 `turn_context` 读取模型。
-- 从 `event_msg.user_message` 提取当前格式的真实用户 Prompt；`history.jsonl` 通过 `session_id` 关联 `session_meta.cwd`。
-- 完全旧版 rollout 缺少 `event_msg.user_message` 时，回退到 `response_item` 的 `role=user`；若同一文件中途升级格式，则保留首个 event 之前清理后的旧 Prompt，并从首个 event 起只信任 `event_msg.user_message`。developer、system、`AGENTS.md`、`environment_context`、`codex_internal_context` 等注入内容不会成为 Prompt。
-- 从 `response_item` 提取助手消息、函数或自定义工具调用及结果；未知事件会被忽略。
-- 旧 rollout 可以只有 `session_meta` 和 `response_item`，缺少模型与 Token 时仍可浏览。
-- `history.jsonl` 的 `ts` 同时接受 Unix 秒和毫秒。单行 JSON 损坏不会使整个文件或索引失败。
-- 默认 Prompt 与会话统计排除自动生成的 sub-agent Prompt；sub-agent 的真实模型调用仍计入 Token，并归属其自身 `cwd`。
-
-Codex 文件已可能超过 1 GB。解析器逐行读取，不会先把整个 JSONL 加载进内存；会话文件仍按文件并行扫描。
-
-### 统一模型与筛选口径
-
-公共领域模型使用：
-
-- `agent`: `claude | codex`
-- `origin`: `history | conversation | both`
-
-`origin` 只描述 Prompt 来自输入历史、会话文件或两者，不再与产品来源混用。Prompt、项目、会话、消息、用量和缓存记录均保留 `agent`。稳定 ID、会话映射、路由、去重键和缓存键都包含 `agent`，因此两个产品即使出现相同 `session_id` 也不会冲突；跨产品的相同文本不会互相去重。
-
-“全部”筛选满足以下恒等关系：
-
-- Prompt 数、会话数和每个归一化 Token 分项等于 Claude 与 Codex 之和。
-- 项目数等于两个产品 `cwd` 路径的并集大小，不是两个项目数简单相加。
-- 相同 `cwd` 的项目在导航中合并，但其 Prompt 和会话仍保留 `agent`。
-
-### Token 统计
-
-统一用量字段如下：
-
-| 字段 | 含义 |
-|---|---|
-| `uncachedInput` | 未命中缓存的输入 Token |
-| `cacheRead` | 从缓存读取的输入 Token |
-| `cacheCreation` | 创建缓存使用的输入 Token |
-| `cacheCreation1h` | `cacheCreation` 中按 1 小时档计费的部分（仅 Claude），其余为 5 分钟档 |
-| `output` | 输出 Token，包含 reasoning 输出 |
-| `reasoningOutput` | `output` 的拆分子集，仅展示 |
-
-总 Token 开销（含缓存）统一计算为：
-
-```text
-totalTokensIncludingCache = uncachedInput + cacheRead + cacheCreation + output
-```
-
-`reasoningOutput` 已包含在 `output` 中，绝不再次加入总量。
-
-Claude Code 映射：
-
-```text
-uncachedInput = input_tokens
-cacheRead = cache_read_input_tokens
-cacheCreation = cache_creation_input_tokens
-cacheCreation1h = cache_creation.ephemeral_1h_input_tokens（缺省 0，不超过 cacheCreation）
-output = output_tokens
-```
-
-Codex 映射只使用每个 `token_count.info.last_token_usage`，不累加累计字段 `total_token_usage`：
-
-```text
-uncachedInput = input_tokens - cached_input_tokens
-cacheRead = cached_input_tokens
-cacheCreation = 0
-cacheCreation1h = 0
-output = output_tokens
-reasoningOutput = reasoning_output_tokens
-```
-
-Codex 的 `input_tokens` 已包含 `cached_input_tokens`，所以不能再把两者作为两个完整输入量相加。fork、resume 或派生会话可能复制历史 Token 事件；索引使用不依赖文件路径和新会话 ID 的稳定事件指纹跨文件去重。
-
-缓存命中率为：
-
-```text
-cacheRead / (uncachedInput + cacheRead)
-```
-
-分母为 0 时显示“—”。概览、按天、按模型和按项目的总 Token 均使用同一公式。
-
-每个会话的 Token 与成本按同一去重规则归属：按会话开始时间顺序，一条调用首次出现在哪个会话就计入哪个会话，fork/resume 复制的历史调用只计入原会话；Claude 子代理的调用并入父会话。因此各会话之和等于全局总量。
-
-对话详情页的「Token 用量明细」面板与这套归属完全同源：索引记住每条唯一调用属于哪个会话，详情按此列出本会话的全部调用（含子代理文件里的调用），按调用与按模型的 Token 之和都等于页头的会话总量。每条助手消息上的用量标签来自该记录自身：Claude 一次调用按内容块拆成多条记录，只有首条带用量；Codex 的 `token_count` 事件归到它前面最近一条模型输出的消息（工具结果不算）。由 resume/fork 复制进来、已计入原会话的调用会灰显标注，不计入本会话的任何数字。缓存节省 = 全部输入按非缓存价计的成本 − 估算成本，缓存写多于读时为负。
-
-### 成本说明
-
-成本按产品和可靠匹配的具体模型分别估算。Codex 成本显示为 **API 等价估算**，仅表示按对应 OpenAI API 标准 Token 单价换算的参考值，不代表 ChatGPT 或 Codex 订阅的实际账单、额度或积分消耗。
-
-无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
-
-Claude 缓存写按 5 分钟档（输入价 ×1.25）与 1 小时档（输入价 ×2）分别计价；旧记录没有分档字段时全部按 5 分钟档。
-
-### 增量缓存
-
-索引缓存 schema 为 **v6**（v6 为每条调用增加缓存写分档字段，升级后首次启动会全量重建一次索引）。每条 history/会话文件缓存记录包含 `agent`，缓存键包含产品和文件身份；文件 `mtime` 与长度指纹未变化时复用解析结果，仅重新解析新增或变化的文件。删除文件、路径设置变化或 cache schema 版本变化会使对应缓存失效。Claude 与 Codex 扫描均可并行进行。
-
-缓存写在本应用的系统数据目录，不写入 `~/.claude` 或 `~/.codex`。缓存是本地派生数据，可能含解析后的 Prompt、消息摘要和用量；它与原始历史一样应按敏感数据保护。
-
-索引在后台线程构建，构建期间界面显示扫描与解析进度，其他查询等待同一次构建完成。顶栏刷新按钮与 ⌘/Ctrl+R 只重解析指纹变化的文件；设置中的“全量重建”忽略缓存重新解析全部文件。重建期间旧索引继续可用。
-
-### 全文搜索
-
-搜索页的“会话内容”模式不建立任何索引：每次搜索并行流式扫描当前筛选范围内的会话文件，先用大小写不敏感的字节子串预筛原始行，只解析命中的行。覆盖用户消息、助手回复、思考摘要与工具调用参数；工具结果正文（文件内容、命令输出）不参与匹配，developer/system 与 `AGENTS.md` 等注入内容也不会命中。多个关键词需同时出现在同一条消息中。每个会话最多返回 20 条、总计最多 300 条，超出时提示缩小范围。
-
-### 导入 Claude Code 会话
-
-在云端 Claude Code 里让它把会话记录打包成 zip（保持 `~/.claude` 的原始层级），下载到本机后点击顶栏的「导入」：
-
-```text
-projects/<项目目录名>/<会话ID>.jsonl
-projects/<项目目录名>/<会话ID>/          ← 同名旁挂目录：tool-results/*.txt、可能有 subagents/
-```
-
-- **写入位置**：解压到当前配置的 Claude projects 目录（默认 `~/.claude/projects`），去掉 zip 里的 `projects/` 前缀。导入的会话与本机会话一样受 Claude Code 默认 30 天的记录清理影响。
-- **安全**：只接受 `projects/<目录名>/` 之下的条目；绝对路径、含 `..` 的路径和符号链接会让整个导入包被拒绝，什么都不写。`__MACOSX/`、`.DS_Store` 等 `projects/` 之外或无法归入会话的条目跳过并在汇总里列出。
-- **项目映射**：云端会话的工作目录是 `/home/user/<仓库名>`。导入弹窗按仓库名预填本机已索引的项目，也可用文件夹选择器指定，或保持原路径。指定本机目录后，只改写每行顶层的 `cwd` 字段，其余内容原样保留，会话写入本机路径对应的项目目录，viewer 归到该项目，本机 `claude --resume <会话ID>` 也能找到它。确认过的映射记在设置文件里，下次导入同一仓库自动预填。
-- **计划规则**：jsonl 与旁挂目录作为一个会话整体判定。本机没有：新增；本机 jsonl 是导入 jsonl 的前缀（同一会话更新后的快照）：覆盖更新；导入 jsonl 是本机 jsonl 的前缀：跳过；完全相同：跳过，只补导入包里多出的旁挂文件；其余情况，以及 jsonl 相同但旁挂目录里有内容不同的同名文件：冲突。`ccr-tip.json` 这类运行时状态文件不参与比较。
-- **冲突处理**：弹窗逐个会话显示会话 ID、所属项目和两边的行数与最后一条记录时间，选择「保留本机」或「用导入的覆盖」，选择对整个会话生效；取消则什么都不写。
-- **写入与汇总**：先解析出计划，确认后一次性写入，写入前重新校验；只覆盖同名文件，绝不删除本机文件。写完走增量重建索引，并显示新增、更新、跳过、冲突中保留本机、冲突中覆盖各多少个会话。
-
-### 外部会话
-
-别人用本应用导出的单会话 Markdown（对话详情页的「导出 Markdown」）可以在侧栏「外部会话」里点「导入 Markdown」临时阅读，可一次多选。它们不会成为本机会话。设计决定见 [Agent Note：外部会话](.agents/notes/implemented/2026-10-10-external-markdown-sessions.md)。
-
-- **支持的文件**：单会话导出（标题为「# 对话导出」或「# Conversation Export」），中英文标签都识别，Claude Code 与 Codex 都支持。多文件批量导出里每个会话的文件与单会话导出格式相同，也可以导入；合并成一份的批量导出、index.md、Prompt 导出和搜索结果导出会被拒绝并说明原因。
-- **详细版与简洁版**：按产品 + 会话 ID 合并为一条。含思考、工具调用、工具结果或附件的文件算详细版，其余算简洁版；同一版本再次导入时替换旧的。「完整」显示详细版；「只看对话」显示简洁版，没有简洁版时由详细版去掉思考、工具调用、工具结果与附件得到，规则与导出时不勾选「包含工具调用与思考过程」相同。只导入了简洁版时只能看对话。
-- **还原程度**：消息按文件里的分钟级时间原样显示；同一条消息里的多个文本块合并为一段；工具调用参数按 JSON 还原，按语义展示；工具结果标出所属工具（旧版导出按调用顺序推断）；工具结果与附件保留导出时的全文，不套用本机会话的展示截断。导出里没有逐次调用的用量，所以不显示 Token 用量明细面板，只显示文件头里的 Token 总量与估算成本。
-- **临时与保留**：导入的会话默认只在内存里，关闭应用即消失。点「保留」把原始 Markdown 复制到应用数据目录的 `external_sessions/<产品>-<会话ID>/`，下次启动自动载入；已保留的会话再导入新版本时同步写入。「删除」移除该条目，已保留的会同时删除这个目录。
-- **隔离**：外部会话不写入 `~/.claude` 或 `~/.codex`，不进入项目列表、概览统计、Prompt 搜索、全文搜索和 Token 汇总，也不提供再次导出与 Resume 命令。外部会话里 Markdown 引用的远程图片不会自动加载，只显示为「远程图片：…」链接，点击才交给系统浏览器打开，避免对方借图片得知你打开了文件。
-
-### 超大工具输出与附件
-
-Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/tool-results/*.txt`，并在 tool_result 里留下 `<persisted-output>` 块和生成时的绝对路径。详情页按会话自己的目录和 `projects/` 之后的部分在当前 projects 目录下重新定位，`/` 与 `\` 分隔符都支持；找到就出现「查看完整输出」按钮，找不到保留原预览。导出包含工具调用时会内联完整输出并标注来源文件。只在显示层处理，不改写 jsonl。
-
-@ 引用或上传的文件内容记录在 `attachment` 行里，详情页以「附件：文件名」折叠块紧跟在对应用户消息之后，导出包含工具调用时一并写入。云端会话的 thinking 块只有 signature、正文为空，这类块不再显示。
-
-### 应用内更新
-
-应用读取本仓库最新 Release 里的 `latest.json`，版本号比当前高才提示。设计决定见 [Agent Note：应用内检查更新与一键更新](.agents/notes/implemented/2026-10-11-in-app-updates.md)。
-
-- **检查**：启动后自动检查，每天最多一次；上次发现的新版本还没装时，每次启动都会再查，让提示一直在。检查失败不弹提示，原因显示在设置的「更新」里。设置里可以关闭自动检查，也可以随时手动检查。
-- **安装**：点顶栏的「新版本」查看更新内容，再点「立即更新」。更新包下载后先用应用内置的公钥核对签名，对不上就拒绝安装。macOS 原地替换应用后重新打开；Windows 由安装程序装完再打开（只显示进度条），msi 版会请求一次管理员确认。设置、索引缓存与保留的外部会话都在应用数据目录，更新不受影响。
-- **网络**：请求跟随系统代理。连不上 GitHub 时，可在设置里点「打开下载页」手动下载。
-- **第一次**：v0.12.0 及更早的版本没有这项功能，需要手动下载安装一次 v0.13.0 或更新的版本。
-
-### 隐私边界
-
-- 不读取 Codex `auth.json`。
-- 不把 Codex 私有 SQLite 表作为主要数据源。
-- 不上传、不遥测历史内容。联网只用于检查和下载更新：只请求本仓库 GitHub Release 上的版本清单和更新包，请求里不带任何历史内容；自动检查可在设置中关闭。
-- 不修改或删除 `~/.codex` 及自定义 Codex 目录中的任何内容；对 `~/.claude` 唯一的写入是用户主动确认的会话导入，且只写 `projects/<目录名>/` 之下的会话文件，只覆盖同名文件，绝不删除。
-- 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件、用户主动导入的会话文件、用户选择保留的外部会话 Markdown（应用数据目录内），以及用户确认安装更新时替换应用自身；全文搜索按需读取会话文件，不写任何索引。
-- 对话里的链接只在用户点击时交给系统浏览器打开。本机会话 Markdown 里的远程图片会由界面直接加载；外部会话里的远程图片只显示为链接。
-
-### 开发与验证
-
-要求 Node.js 18+、pnpm 8+ 和 Rust 工具链。Rust 安装见 [`Rust工具链安装指南.md`](./Rust工具链安装指南.md)。
-
-```bash
-pnpm install
-pnpm tauri dev
-```
-
-发布前门禁：
-
-```bash
-cd src-tauri
-cargo fmt --check
-cargo test
-cd ..
-pnpm exec tsc --noEmit
-pnpm build
-```
-
-`cargo test` 包含完全合成的 Claude 与 Codex fixture/golden 数据，不应加入任何真实 Prompt、私人绝对路径、凭据或真实缓存。真实数据验收只做只读冒烟检查，不在日志或报告中输出内容。
-
----
-
-## English
-
 Coding Agent History Viewer is a Tauri desktop application that scans Claude Code and OpenAI Codex history locally and groups prompts, sessions, tool calls, and token usage by working directory. It only contacts GitHub to check for and download updates, and never uploads history.
 
-### Features
+## Features
 
 - Filter the overview by **Claude Code / Codex / All**. All is the default and the choice is persisted locally.
 - Browse projects, prompts, and sessions by working directory. In All mode, an identical `cwd` is one project.
@@ -274,7 +22,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - **Full-text conversation search**: beyond prompts, scan assistant replies, thinking summaries, and tool-call inputs on demand; hits jump to the exact message with keywords highlighted. No index is built or written.
 - **Conversation view**: assistant replies, thinking and sub-agent reports / plans render as Markdown with syntax-highlighted code; bold and strikethrough next to CJK punctuation and single line breaks show as intended; Codex follow-up suggestions appear as "↪" chips and links to local files show their path on hover. A "Markdown / Raw" switch at the top is remembered; user messages and command output always stay raw. Bash/Edit/Write/Read/TodoWrite and Codex apply_patch calls render semantically (commands, line diffs, patches, checklists); in-conversation find, a user-turn outline (plain-text previews), expand/collapse all, and batched rendering for very long sessions.
 - **Per-session tokens and cost**: sort sessions by newest, cost, messages, or duration; calls copied by fork/resume count only in the original session, so session totals add up to the global totals.
-- **In-session token usage details**: the conversation view has a collapsible "Token usage details" panel: five stat tiles (total / cost / input / output / cache hit rate, with average context per call, average cost per turn, sub-agent share, the 5-minute / 1-hour cache-write split and the saving versus no caching), token and cost mix bars, a stacked per-call chart in call order (click a bar to jump to the message) and, for multi-model sessions, a per-model table. Every assistant message carries a context / output / cost chip for its call, and the outline shows tokens and cost per user turn.
+- **In-session token usage details**: the conversation view has a collapsible "Token usage details" panel: five stat tiles (total / cost / input / output / cache hit rate, with average context per call, average cost per turn, sub-agent share, the 5-minute / 1-hour cache-write split and the saving versus no caching), token and cost mix bars, a stacked per-call chart in call order (click a bar to jump to the message) and, for sessions with several models or reasoning efforts, a per-model table with one row per effort; the output tile and the tooltips show the reasoning effort. Every assistant message carries a context / output / cost chip for its call, and the outline shows tokens and cost per user turn.
 - **Batch session export**: tick several sessions on a folder's Sessions tab and export them at once, either as one merged Markdown file with a table of contents or as one file per session plus an index.md; optionally include tool calls and thinking. Single and batch exports parse without the display clip, so long tool results are kept whole.
 - **Import Claude Code sessions**: bring a zip packed by Claude Code on the web (claude.ai/code) into the local projects directory, then browse, search and export those sessions like local ones. A read-only plan classifies every session as add / update / skip / conflict first; conflicts are resolved one by one with "keep local" or "overwrite with import"; the cloud `/home/user/<repo>` can be mapped to a local folder and the mapping is remembered. See [Importing Claude Code sessions](#importing-claude-code-sessions).
 - **External sessions (read someone else's exported Markdown)**: import a single-conversation Markdown file that someone else exported with this app from the sidebar's "External sessions" page and read it in the same conversation view. The detailed and brief exports of one session merge into one entry with a "Full / Dialogue only" switch. Imports last only for the current run unless you click "Keep", which copies them into the app's data directory; nothing is written to `~/.claude` or `~/.codex`, and external sessions stay out of stats and search. See [External sessions](#external-sessions).
@@ -287,7 +35,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - **In-app updates**: checks GitHub for a newer version at startup (at most once a day; can be turned off in Settings) and shows it in the toolbar; "Update now" downloads it, verifies its signature, installs it and reopens the app. See [In-app updates](#in-app-updates).
 - Continue working when either product's data directory is absent.
 
-### Keyboard shortcuts
+## Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
@@ -297,7 +45,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 | ⌘/Ctrl + , | Open Settings |
 | ⌘/Ctrl + F (in a conversation) | Find in conversation; Enter / Shift+Enter move between hits |
 
-### Data paths and precedence
+## Data paths and precedence
 
 Claude Code defaults to `~/.claude/history.jsonl`, `~/.claude/projects/**/*.jsonl`, and `~/.claude/sessions/*.json`. Legacy `historyFile`, `projectsDir`, and `sessionsDir` settings override individual paths; otherwise paths derive from `claudeDataDir`, then `~/.claude`. `importPathMappings` stores the cloud-to-local folder pairs confirmed during session imports; they can be removed in Settings.
 
@@ -311,7 +59,7 @@ Codex reads:
 
 `CODEX_ROOT` precedence is explicit `codexDataDir`, then `CODEX_HOME`, then `~/.codex`. The settings view reports configured and resolved paths separately for both products. Existing Claude-only settings remain valid. The bundle identifier stays `com.xzl.cchistoryviewer` so existing application settings are retained.
 
-### Codex compatibility
+## Codex compatibility
 
 - `session_meta` supplies session ID, `cwd`, CLI version, and client source; the latest `turn_context` supplies the active model.
 - Current user prompts come from `history.jsonl` and `event_msg.user_message`, associated through `session_id` and `session_meta.cwd`.
@@ -323,13 +71,13 @@ Codex reads:
 
 Codex JSONL is streamed rather than loaded as a whole, including histories larger than 1 GB, while files continue to be scanned in parallel.
 
-### Domain and filtering invariants
+## Domain and filtering invariants
 
 The normalized model uses `agent = claude | codex` and `origin = history | conversation | both`. `origin` describes where a prompt was observed, not which product produced it. Agent identity is part of every stable ID, session route, deduplication key, and cache key. Equal session IDs or prompt text from different products never collide or deduplicate.
 
 For the All filter, prompt count, session count, and every normalized token component equal Claude plus Codex. Project count is the set union of `cwd` paths. Merged project navigation never removes the agent identity from its prompts and sessions.
 
-### Token accounting
+## Token accounting
 
 The unified fields are `uncachedInput`, `cacheRead`, `cacheCreation`, `cacheCreation1h`, `output`, and `reasoningOutput`.
 
@@ -358,13 +106,15 @@ Per-session usage follows the same deduplication: sessions are visited in start-
 
 The conversation view's "Token usage details" panel shares that attribution: the index remembers which session owns each unique call, the detail lists every call the session owns (sub-agent transcripts included), and the per-call and per-model token sums equal the session total in the header. The chip on an assistant message comes from that record itself: a Claude call is written as one record per content block and only the first carries usage; a Codex `token_count` event lands on the nearest earlier model-output message (tool results excluded). Calls copied in by resume/fork that belong to another session are greyed out and excluded from every number. Cache saving = cost with every input token at the uncached rate − estimated cost, negative when cache writes outweigh reads.
 
-### Cost, cache, and privacy
+The panel also shows each call's reasoning effort as recorded (`low` / `medium` / `high` / `xhigh` / `max`, plus `minimal` for Codex): Claude Code's top-level `perTurnEffort` on an assistant record, falling back to `effort`; Codex's `turn_context.effort`, shared by every call in that turn. Records from older versions carry no effort and show "not recorded"; no default is guessed. The effort appears in the message chip and call chart tooltips and on the output tile (with per-effort call counts, sub-agents included, when a session mixes efforts), and the per-model table splits each model by effort. Effort does not enter the cost estimate.
+
+## Cost, cache, and privacy
 
 Codex cost is labelled an **API-equivalent estimate**. It is a reference conversion using reliably matched OpenAI API token prices, not an actual ChatGPT/Codex subscription charge, allowance, or credit balance. Unknown models display “—”; combined totals include known estimated cost and disclose how many tokens have unknown pricing. Built-in rates were checked on 2026-07-17 against [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and official OpenAI model pages such as [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max), [o4-mini](https://developers.openai.com/api/docs/models/o4-mini), and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).
 
 Claude cache writes are priced by tier: 5-minute at 1.25× the input rate, 1-hour at 2×; records without the split count as 5-minute.
 
-Cache schema **v6** (v6 adds the cache-write tier to every call, so the first launch after upgrading rebuilds the index once) is agent-aware and stores per-file parsed results keyed by product and file identity. Unchanged `mtime` and file-length fingerprints are reused; changed, added, removed, reconfigured, or old-schema entries are rebuilt. The cache lives in this application's data directory and may contain derived prompt text, summaries, and usage.
+Cache schema **v7** (v7 adds the reasoning effort to every call, so the first launch after upgrading rebuilds the index once) is agent-aware and stores per-file parsed results keyed by product and file identity. Unchanged `mtime` and file-length fingerprints are reused; changed, added, removed, reconfigured, or old-schema entries are rebuilt. The cache lives in this application's data directory and may contain derived prompt text, summaries, and usage.
 
 The index builds on a background thread and reports progress while other queries wait for the same build. The toolbar refresh and ⌘/Ctrl+R re-parse only files whose fingerprint changed; the full rebuild in Settings ignores the cache. The previous index stays available while a rebuild runs.
 
@@ -372,7 +122,7 @@ Full-text conversation search builds no index: each search streams the session f
 
 The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, Markdown files explicitly exported by the user, external-session Markdown the user chose to keep (inside the app's data directory), and its own application files when the user installs an update. Its only network traffic is the update check and download from this repository's GitHub Releases, which carries no history; the automatic check can be turned off in Settings. Links inside conversations open in the system browser only when clicked; remote images in local conversations load directly, while those in external sessions show as links.
 
-### Importing Claude Code sessions
+## Importing Claude Code sessions
 
 Ask Claude Code on the web to pack the session records as a zip that keeps the `~/.claude` layout, download it, and click **Import** in the top bar:
 
@@ -388,7 +138,7 @@ projects/<project dir>/<session id>/      ← side directory: tool-results/*.txt
 - **Conflicts**: the dialog shows the session ID, project, and each side's line count and last record time; choose "keep local" or "overwrite with import" per session. The choice covers the whole session, and cancelling writes nothing.
 - **Write and summary**: the plan is computed first and re-validated right before writing; files are written atomically, same-named files are overwritten, nothing is deleted. The index then refreshes incrementally and the summary reports added, updated, skipped, kept-local and overwritten sessions.
 
-### External sessions
+## External sessions
 
 A single-conversation Markdown file that someone else exported with this app (the conversation view's "Export Markdown") can be read through **Import Markdown** on the sidebar's "External sessions" page; several files can be picked at once. They never become local sessions.
 
@@ -398,7 +148,7 @@ A single-conversation Markdown file that someone else exported with this app (th
 - **Temporary or kept**: imports live in memory and disappear when the app quits. "Keep" copies the original Markdown into `external_sessions/<agent>-<session id>/` under the app's data directory and loads it on the next launch; importing a new version of a kept session writes it there too. "Delete" removes the entry and, for a kept one, that directory.
 - **Isolation**: external sessions are never written to `~/.claude` or `~/.codex`, never appear in the project list, overview stats, prompt search, full-text search or token totals, and offer no re-export or resume command. Remote images referenced in their Markdown are never loaded; they show as "Remote image: …" links that open in the system browser only when clicked, so the sender cannot learn from an image request that you opened the file.
 
-### In-app updates
+## In-app updates
 
 The app reads `latest.json` from this repository's latest Release and offers an update only when its version is higher. See the [Agent Note](.agents/notes/implemented/2026-10-11-in-app-updates.md) for the design decision.
 
@@ -407,13 +157,13 @@ The app reads `latest.json` from this repository's latest Release and offers an 
 - **Network**: requests follow the system proxy. If GitHub cannot be reached, "Open download page" in Settings opens the Release page in the browser.
 - **First time**: v0.12.0 and earlier lack this feature; install v0.13.0 or later manually once.
 
-### Persisted tool outputs and attachments
+## Persisted tool outputs and attachments
 
 Claude Code stores very large tool outputs in `projects/<dir>/<session id>/tool-results/*.txt` and leaves a `<persisted-output>` block with the absolute path of the machine that produced it. The conversation view re-resolves that path under the current projects directory, first through the session's own directory and then through the part after `projects/`, accepting both `/` and `\`; when the file exists a "View full output" button appears, otherwise the original preview stays. Exports that include tool calls inline the full output and note its source file. Transcripts are never rewritten.
 
 Files referenced with @ or uploaded are recorded as `attachment` lines; they render as a collapsed "Attachment: file name" block right after the user message and are exported when tool calls are included. Thinking blocks from cloud sessions carry only a signature with an empty body; such blocks are hidden.
 
-### Development and release checks
+## Development and release checks
 
 ```bash
 pnpm install
@@ -429,6 +179,6 @@ pnpm build
 
 Tests use synthetic fixtures only. Real Claude/Codex data is allowed solely for a read-only smoke test and must never be committed or printed in a report.
 
-### License
+## License
 
 [MIT](./LICENSE)

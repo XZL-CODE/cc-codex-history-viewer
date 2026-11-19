@@ -48,6 +48,10 @@ pub struct UsageEntry {
     /// Cwd at the original event, retained across fork/resume copies.
     pub project: String,
     pub usage: NormalizedUsage,
+    /// Reasoning effort the call ran at, as the transcript records it (`xhigh`, `medium`, ...);
+    /// `None` when the record predates the field.
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 /// 单个对话文件的解析结果（参与文件级缓存序列化）
@@ -202,6 +206,11 @@ struct ConvLine {
     subtype: Option<String>,
     /// system 行的顶层内容（local_command 时为命令文本）
     content: Option<serde_json::Value>,
+    /// assistant 行：会话当时的推理档位设置（新版 Claude Code 才写）。按 Value 读，
+    /// 形状不符时只丢这个字段，不让整行解析失败。
+    effort: Option<serde_json::Value>,
+    /// assistant 行：这一轮实际使用的推理档位，优先于 `effort`
+    per_turn_effort: Option<serde_json::Value>,
     message: Option<ConvMessage>,
 }
 
@@ -231,6 +240,13 @@ struct RawUsage {
 #[derive(Deserialize)]
 struct RawCacheCreation {
     ephemeral_1h_input_tokens: Option<u64>,
+}
+
+/// A recorded reasoning effort kept as-is (`xhigh`, `medium`, ...); anything that is not a short
+/// non-empty string counts as not recorded.
+pub(crate) fn effort_value(value: Option<&serde_json::Value>) -> Option<String> {
+    let text = value?.as_str()?.trim();
+    (!text.is_empty() && text.len() <= 32).then(|| text.to_string())
 }
 
 /// ISO8601 字符串转毫秒时间戳
@@ -440,6 +456,7 @@ struct ClaudeCall {
     model: String,
     call_key: String,
     usage: NormalizedUsage,
+    effort: Option<String>,
 }
 
 /// Read the call behind an assistant record; `None` for synthetic records and empty usage.
@@ -496,10 +513,13 @@ fn claude_call_usage(line: &ConvLine, ts: Option<i64>) -> Option<ClaudeCall> {
                 ])
             )
         });
+    let effort =
+        effort_value(line.per_turn_effort.as_ref()).or_else(|| effort_value(line.effort.as_ref()));
     Some(ClaudeCall {
         model,
         call_key,
         usage,
+        effort,
     })
 }
 
@@ -523,6 +543,7 @@ fn extract_usage_entry(
         timestamp: ts.unwrap_or(0),
         project: project.to_string(),
         usage: call.usage,
+        effort: call.effort,
     })
 }
 
@@ -667,6 +688,7 @@ pub fn parse_conversation_detail_with_limit(
                         call_key: call.call_key,
                         model: call.model,
                         usage: call.usage,
+                        effort: call.effort,
                         est_cost_usd: None,
                         attributed: true,
                     });
@@ -1361,6 +1383,62 @@ mod tests {
         assert_eq!(file.usage_entries[0].dedup_key, "claude:id:msg_t1");
         assert_eq!(file.usage_entries[0].usage.cache_creation_1h, 300);
         assert_eq!(file.usage_entries[1].usage.cache_creation_1h, 5);
+    }
+
+    #[test]
+    fn effort_prefers_per_turn_value_and_tolerates_odd_shapes() {
+        let call = |id: &str, extra: serde_json::Value| {
+            let mut line = json!({
+                "type": "assistant",
+                "uuid": format!("a-{id}"),
+                "timestamp": "2026-07-14T10:00:01.000Z",
+                "cwd": "/synthetic/project",
+                "message": {
+                    "role": "assistant",
+                    "id": id,
+                    "model": "claude-opus-4-5-20251101",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [{"type": "text", "text": "ok"}]
+                }
+            });
+            for (key, value) in extra.as_object().unwrap() {
+                line[key] = value.clone();
+            }
+            line
+        };
+        let path = write_temp_conversation(
+            "effort",
+            &[
+                call("m1", json!({"effort": "high", "perTurnEffort": "max"})),
+                call("m2", json!({"effort": "xhigh"})),
+                call("m3", json!({})),
+                // 形状不符只丢档位，整行照常解析
+                call(
+                    "m4",
+                    json!({"effort": {"level": "high"}, "perTurnEffort": "  "}),
+                ),
+            ],
+        );
+        let detail = parse_conversation_detail(&path).unwrap();
+        let file = parse_conversation_file(&path).unwrap();
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+        let expected = vec![Some("max"), Some("xhigh"), None, None];
+        assert_eq!(
+            detail
+                .messages
+                .iter()
+                .map(|message| message.usage.as_ref().unwrap().effort.as_deref())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(
+            file.usage_entries
+                .iter()
+                .map(|entry| entry.effort.as_deref())
+                .collect::<Vec<_>>(),
+            expected
+        );
     }
 
     #[test]

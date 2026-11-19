@@ -218,6 +218,8 @@ export interface MessageUsage extends CallTokenFields {
   /** 与索引共用的调用指纹 */
   callKey: string;
   model: string;
+  /** 记录里的推理档位原值（xhigh、medium…）；记录没有这个字段时为 null */
+  effort: string | null;
   /** 未知定价模型为 null */
   estCostUsd: number | null;
   /** false：索引把这次调用归到了别的会话（resume/fork 复制进来的），不计入本会话 */
@@ -229,12 +231,17 @@ export interface UsageCall extends CallTokenFields {
   callKey: string;
   timestamp: number;
   model: string;
+  /** 记录里的推理档位原值（xhigh、medium…）；记录没有这个字段时为 null */
+  effort: string | null;
   estCostUsd: number | null;
   subagent: boolean;
 }
 
+/** 按模型拆分，同一模型再按推理档位分行 */
 export interface SessionModelUsage extends CallTokenFields {
   model: string;
+  /** 这一行调用共同的推理档位；null 汇总没有记录档位的调用 */
+  effort: string | null;
   calls: number;
   totalTokensIncludingCache: number;
   estCostUsd: number | null;

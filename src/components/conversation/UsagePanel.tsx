@@ -29,6 +29,7 @@ import {
   absoluteTime,
   cacheHitRate,
   cn,
+  compareEffort,
   formatCost,
   formatNumber,
   formatPercent,
@@ -136,6 +137,7 @@ interface CallRow {
   n: number;
   callKey: string;
   model: string;
+  effort: string | null;
   timestamp: number;
   uncachedInput: number;
   cacheRead: number;
@@ -161,7 +163,10 @@ function CallTooltip({
       <div className="font-medium text-foreground">
         {t("usageCallLabel", { n: row.n })} · {shortModel(row.model)}
       </div>
-      <div className="text-muted">{absoluteTime(row.timestamp)}</div>
+      <div className="text-muted">
+        {absoluteTime(row.timestamp)}
+        {row.effort && ` · ${t("usageEffortLine", { value: row.effort })}`}
+      </div>
       <div className="mt-1 space-y-0.5 text-muted">
         <div className="text-foreground">
           {t("usageContextLine", { value: formatTokens(usageContext(row)) })} ·{" "}
@@ -266,6 +271,7 @@ function ModelTable({ rows }: { rows: SessionModelUsage[] }) {
         <thead>
           <tr className="border-b border-border text-muted">
             <th className="pb-2 pr-2 text-left font-medium">{t("modelCol")}</th>
+            <th className="px-2 pb-2 text-left font-medium">{t("effortCol")}</th>
             <th className="px-2 pb-2 text-right font-medium">{t("callsCol")}</th>
             <th className="px-2 pb-2 text-right font-medium">{t("totalTokensCol")}</th>
             <th className="px-2 pb-2 text-right font-medium">{t("inputCol")}</th>
@@ -277,7 +283,10 @@ function ModelTable({ rows }: { rows: SessionModelUsage[] }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.model} className="border-b border-border/60 last:border-0">
+            <tr
+              key={`${row.model}|${row.effort ?? ""}`}
+              className="border-b border-border/60 last:border-0"
+            >
               <td className="py-2 pr-2">
                 <span
                   className="block max-w-[190px] truncate font-medium text-foreground"
@@ -285,6 +294,9 @@ function ModelTable({ rows }: { rows: SessionModelUsage[] }) {
                 >
                   {shortModel(row.model)}
                 </span>
+              </td>
+              <td className="whitespace-nowrap px-2 py-2 text-muted">
+                {row.effort ?? t("effortUnrecorded")}
               </td>
               <td className="px-2 py-2 text-right text-muted">{formatNumber(row.calls)}</td>
               <td className="px-2 py-2 text-right font-medium text-foreground">
@@ -311,8 +323,8 @@ function ModelTable({ rows }: { rows: SessionModelUsage[] }) {
 
 /**
  * 会话用量明细：折叠面板，收起时只剩一行摘要。展开后是 5 张指标卡（均值 / 占比 / 缓存节省 /
- * 缓存分档放在卡片第二行）、Token 与成本两根构成条、按调用顺序的堆叠柱图，多模型会话再加一张
- * 按模型表。所有数字与页头的会话总量同源（索引归属到本会话的调用）。
+ * 缓存分档、推理档位放在卡片第二行）、Token 与成本两根构成条、按调用顺序的堆叠柱图；多模型
+ * 或多档位的会话再加一张按模型表，同一模型按档位分行。所有数字与页头的会话总量同源（索引归属到本会话的调用）。
  */
 export function UsagePanel({
   agent,
@@ -359,6 +371,7 @@ export function UsagePanel({
           n: index + 1,
           callKey: call.callKey,
           model: call.model,
+          effort: call.effort,
           timestamp: call.timestamp,
           uncachedInput: call.uncachedInput,
           cacheRead: call.cacheRead,
@@ -370,6 +383,18 @@ export function UsagePanel({
         })),
     [breakdown.calls]
   );
+
+  // 各档位的调用次数（含子代理），从低到高；没有任何调用记录档位时不显示
+  const effortMix = useMemo(() => {
+    const counts = new Map<string | null, number>();
+    for (const call of breakdown.calls) {
+      counts.set(call.effort, (counts.get(call.effort) ?? 0) + 1);
+    }
+    if ([...counts.keys()].every((effort) => effort === null)) return [];
+    return [...counts.entries()]
+      .sort(([left], [right]) => compareEffort(left, right))
+      .map(([effort, count]) => ({ effort, count }));
+  }, [breakdown.calls]);
 
   const total = usage.totalTokensIncludingCache;
   if (total <= 0) return null;
@@ -506,6 +531,23 @@ export function UsagePanel({
                     <span className="block">
                       {t("usageAvgOutputPerCall", {
                         value: formatTokens(Math.round(usage.output / calls)),
+                      })}
+                    </span>
+                  )}
+                  {effortMix.length > 0 && (
+                    <span className="block">
+                      {t("usageEffortLine", {
+                        value:
+                          effortMix.length === 1
+                            ? (effortMix[0].effort as string)
+                            : effortMix
+                                .map(({ effort, count }) =>
+                                  t("usageEffortCount", {
+                                    effort: effort ?? t("effortUnrecorded"),
+                                    count: formatNumber(count),
+                                  })
+                                )
+                                .join(" · "),
                       })}
                     </span>
                   )}

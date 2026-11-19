@@ -143,6 +143,7 @@ function UsageChip({ usage }: { usage: MessageUsage }) {
       : "");
   const lines = [
     t("msgUsageTooltipModel", { model: usage.model }),
+    ...(usage.effort ? [t("usageEffortLine", { value: usage.effort })] : []),
     t("usageUncachedLine", { value: formatNumber(usage.uncachedInput) }),
     t("usageCacheReadLine", { value: formatNumber(usage.cacheRead) }),
     cacheWrite,

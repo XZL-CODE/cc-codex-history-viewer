@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEDUP_WINDOW_MS: i64 = 5 * 60 * 1000;
-const CACHE_VERSION: u32 = 6;
+const CACHE_VERSION: u32 = 7;
 
 pub struct AppIndex {
     pub prompts: Vec<PromptEntry>,
@@ -1555,6 +1555,7 @@ mod tests {
                         output: 20,
                         reasoning_output: 0,
                     },
+                    effort: None,
                 })
                 .collect(),
         }
