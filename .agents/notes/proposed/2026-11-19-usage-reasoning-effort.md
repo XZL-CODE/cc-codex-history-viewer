@@ -30,7 +30,8 @@ Status: proposed
 
 [对话详情的 Token 用量明细](../implemented/2026-09-28-conversation-usage-breakdown.md)
 的 Proposal 写明「按模型表只在多模型会话出现」。按档位分行后，单模型但用了多个档位的会话
-也会出现这张表（行数大于 1 即显示），与该条字面不符，待用户裁定。
+也会出现这张表，与该条字面不符，已在该条标待裁定。用户裁定：按模型表行数大于 1 即显示，
+不论是多模型还是多档位。本 Note 进 `implemented/` 时，该条改标已取代。
 
 ## Risks
 
