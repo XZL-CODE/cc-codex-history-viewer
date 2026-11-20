@@ -1,5 +1,6 @@
-// 应用内更新的状态：启动后按设置自动检查，记住检查结果与安装进度，供顶栏提示、更新弹窗和设置页共用。
-// 自动检查每天最多一次；上次发现了还没安装的新版本时，每次启动都查，让提示一直在。
+// 应用内更新的状态：按设置自动检查，记住检查结果与安装进度，供顶栏提示、更新弹窗和设置页共用。
+// 自动检查在启动后、窗口重新获得焦点时和运行期间进行，距上次检查（失败也算）满一小时才查；
+// 上次发现了还没安装的新版本时，启动后不等满一小时就查，让提示一直在。
 
 import {
   createContext,
@@ -18,9 +19,11 @@ import type { UpdateInfo, UpdateProgress } from "@/lib/types";
 const AUTO_CHECK_KEY = "cchv-update-auto-check";
 const LAST_CHECK_KEY = "cchv-update-last-check";
 const UPDATE_PROGRESS_EVENT = "update-progress";
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 /** 启动后稍等再查，不和首次索引构建抢资源 */
 const STARTUP_DELAY_MS = 5000;
+/** 运行期间多久看一次是否到期；只读 localStorage，到期才发请求 */
+const DUE_POLL_MS = 5 * 60 * 1000;
 
 /** 本应用最新一版的 Release 页面：检查或安装失败时交给浏览器下载 */
 export const RELEASES_URL =
@@ -33,7 +36,7 @@ export type CheckStatus =
   | "available"
   | "error";
 
-/** 上次成功检查的时间，以及那次发现的新版本 */
+/** 上次检查的时间（失败也记），以及最近一次成功检查发现的新版本 */
 interface LastCheck {
   at: number;
   found: string | null;
@@ -70,9 +73,9 @@ function persist(key: string, value: string) {
   }
 }
 
-/** 该自动检查了：从没查过、距上次超过一天，或上次发现的新版本还没装 */
-function autoCheckDue(last: LastCheck | null, now: number): boolean {
-  return !last || now - last.at >= CHECK_INTERVAL_MS || last.found !== null;
+/** 该自动检查了：从没查过，或距上次检查满一小时 */
+function checkDue(last: LastCheck | null, now: number): boolean {
+  return !last || now - last.at >= CHECK_INTERVAL_MS;
 }
 
 interface Updater {
@@ -128,16 +131,45 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       setStatus("error");
       setCheckError(errMessage(error));
+      // 失败也算一次检查，一小时后再试；保留上次发现的新版本
+      persist(
+        LAST_CHECK_KEY,
+        JSON.stringify({
+          at: Date.now(),
+          found: readLastCheck()?.found ?? null,
+        } satisfies LastCheck)
+      );
     } finally {
       checkingRef.current = false;
     }
   }, []);
 
-  // 启动后自动检查；关掉开关会取消还没开始的检查
+  // 自动检查：启动后、窗口重新获得焦点或重新显示时、运行期间定时，到期才查。
+  // 关掉开关会取消还没开始的检查
   useEffect(() => {
-    if (!autoCheck || !autoCheckDue(readLastCheck(), Date.now())) return;
-    const timer = window.setTimeout(() => void check(), STARTUP_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    if (!autoCheck) return;
+    // 启动时窗口也会获得焦点，等过了启动延迟才响应焦点与定时
+    let started = false;
+    const checkIfDue = () => {
+      if (started && checkDue(readLastCheck(), Date.now())) void check();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkIfDue();
+    };
+    const startup = window.setTimeout(() => {
+      started = true;
+      const last = readLastCheck();
+      if (checkDue(last, Date.now()) || last?.found) void check();
+    }, STARTUP_DELAY_MS);
+    const poll = window.setInterval(checkIfDue, DUE_POLL_MS);
+    window.addEventListener("focus", checkIfDue);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(startup);
+      window.clearInterval(poll);
+      window.removeEventListener("focus", checkIfDue);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [autoCheck, check]);
 
   // 下载与安装进度

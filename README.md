@@ -32,7 +32,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
 - Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache. The index builds on a background thread with live progress; refresh re-parses only changed files, and a full rebuild lives in Settings.
 - Search is its own route so the back button returns to results; window position and size are remembered; the theme can follow the system.
-- **In-app updates**: checks GitHub for a newer version at startup (at most once a day; can be turned off in Settings) and shows it in the toolbar; "Update now" downloads it, verifies its signature, installs it and reopens the app. See [In-app updates](#in-app-updates).
+- **In-app updates**: checks GitHub for a newer version at startup and while the app is open (at most once an hour; can be turned off in Settings) and shows it in the toolbar; "Update now" downloads it, verifies its signature, installs it and reopens the app. See [In-app updates](#in-app-updates).
 - Continue working when either product's data directory is absent.
 
 ## Keyboard shortcuts
@@ -152,7 +152,7 @@ A single-conversation Markdown file that someone else exported with this app (th
 
 The app reads `latest.json` from this repository's latest Release and offers an update only when its version is higher. See the [Agent Note](.agents/notes/implemented/2026-10-11-in-app-updates.md) for the design decision.
 
-- **Checking**: automatic at startup, at most once a day; while a newer version found earlier is still not installed, every launch checks again so the notice stays. A failed check shows no popup; the reason appears under "Updates" in Settings, where automatic checks can be turned off and a check can be run at any time.
+- **Checking**: automatic at startup, when the window regains focus and periodically while the app is open, at most once an hour; a failed check counts too, so it is retried an hour later. While a newer version found earlier is still not installed, every launch checks again so the notice stays. A failed check shows no popup; the reason appears under "Updates" in Settings, where automatic checks can be turned off and a check can be run at any time. See the [Agent Note on check timing](.agents/notes/proposed/2026-11-20-update-check-timing.md).
 - **Installing**: open the toolbar's update button to read the release notes, then click "Update now". The package's signature is verified against the public key built into the app before anything is installed. macOS replaces the app in place and reopens it; on Windows the installer runs with a progress bar only and reopens the app (the MSI asks for administrator approval once). Settings, the index cache and kept external sessions live in the app's data directory and survive updates.
 - **Network**: requests follow the system proxy. If GitHub cannot be reached, "Open download page" in Settings opens the Release page in the browser.
 - **First time**: v0.12.0 and earlier lack this feature; install v0.13.0 or later manually once.
