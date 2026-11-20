@@ -541,7 +541,7 @@ export const zh = {
   updateInstalling: "已下载并核对签名，正在安装…",
   updateInstallFailed: "更新失败：{error}",
   updateSection: "更新",
-  updateAutoCheck: "自动检查更新（每小时最多一次）",
+  updateAutoCheck: "自动检查更新（每个整点检查一次）",
   updatePrivacyHint:
     "检查更新只向 GitHub 请求本应用的版本清单和更新包，不发送任何历史内容。",
   updateCheckNow: "检查更新",
