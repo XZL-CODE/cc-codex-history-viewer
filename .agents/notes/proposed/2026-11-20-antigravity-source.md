@@ -22,10 +22,13 @@ Antigravity CLI（`agy`）接替；企业授权与付费 API key 用户仍可使
 - 数据目录默认 `~/.gemini`，设置项为 `geminiDataDir`。理由：两个 CLI 共用这个目录。
 - Gemini 模型暂不定价：Token 照常统计，成本按未知定价模型处理。理由：用户确认这次不加价格表。
 - 推理档位只取记录里的原值，不从模型名后缀（如 `gemini-3.8-flash-high`）拆出档位，模型名原样显示。理由：沿用
-  [推理档位 Note](./2026-11-19-usage-reasoning-effort.md) 的原值规则。
+  [推理档位 Note](../implemented/2026-11-19-usage-reasoning-effort.md) 的原值规则。
 - Gemini CLI 的 Token 归一：缓存读 = `cached`；非缓存输入 = `input − cached + tool`；输出 = `output + thoughts`，其中
   `thoughts` 记为推理输出。理由：样本中 `total = input + output + thoughts + tool`；按 Gemini API 的用量语义，缓存
-  命中的部分包含在 `input` 里。Antigravity CLI 的归一等第二份样本确认 `input_tokens` 是否包含 `cache_read_tokens`。
+  命中的部分包含在 `input` 里。
+- Antigravity CLI 的 Token 归一：非缓存输入 = `input_tokens`，缓存读 = `cache_read_tokens`，输出 = `output_tokens`，推理
+  输出记 0。理由：第二份样本中后续调用的 `cache_read_tokens` 大于 `input_tokens`，说明后者不含缓存；`output_tokens`
+  等于数据库里思考与回答两项之和，但纯文本里没有拆分。
 
 ## 读取规则
 

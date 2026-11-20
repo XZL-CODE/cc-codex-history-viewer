@@ -203,7 +203,7 @@ cacheRead / (uncachedInput + cacheRead)
 
 对话详情页的「Token 用量明细」面板与这套归属完全同源：索引记住每条唯一调用属于哪个会话，详情按此列出本会话的全部调用（含子代理文件里的调用），按调用与按模型的 Token 之和都等于页头的会话总量。每条助手消息上的用量标签来自该记录自身：Claude 一次调用按内容块拆成多条记录，只有首条带用量；Codex 的 `token_count` 事件归到它前面最近一条模型输出的消息（工具结果不算）。由 resume/fork 复制进来、已计入原会话的调用会灰显标注，不计入本会话的任何数字。缓存节省 = 全部输入按非缓存价计的成本 − 估算成本，缓存写多于读时为负。
 
-面板也显示每次调用的推理档位，取记录里的原值（`low` / `medium` / `high` / `xhigh` / `max`，Codex 还有 `minimal`）：Claude Code 读助手记录顶层的 `perTurnEffort`，缺失时用 `effort`；Codex 读每轮 `turn_context.effort`，同一轮的调用共用。旧版本的记录没有档位，显示「未记录」，不推测默认值。Antigravity 的记录也没有档位字段，档位写在模型名里（如 `gemini-3.8-flash-low`），模型名照原样显示。档位出现在消息用量标签与调用图的悬停、输出卡片（多档位时列出各档位调用次数，含子代理），按模型表在同一模型下按档位分行。档位不参与成本估算。设计决定见 [Agent Note：用量明细显示推理档位](.agents/notes/proposed/2026-11-19-usage-reasoning-effort.md)。
+面板也显示每次调用的推理档位，取记录里的原值（`low` / `medium` / `high` / `xhigh` / `max`，Codex 还有 `minimal`）：Claude Code 读助手记录顶层的 `perTurnEffort`，缺失时用 `effort`；Codex 读每轮 `turn_context.effort`，同一轮的调用共用。旧版本的记录没有档位，显示「未记录」，不推测默认值。Antigravity 的记录也没有档位字段，档位写在模型名里（如 `gemini-3.8-flash-low`），模型名照原样显示。档位出现在消息用量标签与调用图的悬停、输出卡片（多档位时列出各档位调用次数，含子代理），按模型表在同一模型下按档位分行。档位不参与成本估算。设计决定见 [Agent Note：用量明细显示推理档位](.agents/notes/implemented/2026-11-19-usage-reasoning-effort.md)。
 
 ## 成本说明
 
