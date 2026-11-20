@@ -1,6 +1,6 @@
 // 应用内更新的状态：按设置自动检查，记住检查结果与安装进度，供顶栏提示、更新弹窗和设置页共用。
-// 自动检查在启动后、窗口重新获得焦点时和运行期间进行，距上次检查（失败也算）满一小时才查；
-// 上次发现了还没安装的新版本时，启动后不等满一小时就查，让提示一直在。
+// 自动检查每个整点（本机时间）一次；启动后与窗口重新获得焦点时，本小时还没查过（失败也算查过）也查一次；
+// 上次发现了还没安装的新版本时，启动后不管本小时查没查过都查，让提示一直在。
 
 import {
   createContext,
@@ -19,10 +19,11 @@ import type { UpdateInfo, UpdateProgress } from "@/lib/types";
 const AUTO_CHECK_KEY = "cchv-update-auto-check";
 const LAST_CHECK_KEY = "cchv-update-last-check";
 const UPDATE_PROGRESS_EVENT = "update-progress";
-const CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 /** 启动后稍等再查，不和首次索引构建抢资源 */
 const STARTUP_DELAY_MS = 5000;
-/** 运行期间多久看一次是否到期；只读 localStorage，到期才发请求 */
+const HOURLY_SLACK_MS = 1000;
+/** 整点定时器之外的兜底：睡眠唤醒后定时器可能错过整点，每 5 分钟看一次本小时查过没有 */
 const DUE_POLL_MS = 5 * 60 * 1000;
 
 /** 本应用最新一版的 Release 页面：检查或安装失败时交给浏览器下载 */
@@ -73,9 +74,16 @@ function persist(key: string, value: string) {
   }
 }
 
-/** 该自动检查了：从没查过，或距上次检查满一小时 */
+/** 本机时间当前整点的时刻 */
+function hourStart(now: number): number {
+  const date = new Date(now);
+  date.setMinutes(0, 0, 0);
+  return date.getTime();
+}
+
+/** 该自动检查了：从没查过，或本小时还没查过 */
 function checkDue(last: LastCheck | null, now: number): boolean {
-  return !last || now - last.at >= CHECK_INTERVAL_MS;
+  return !last || last.at < hourStart(now);
 }
 
 interface Updater {
@@ -131,7 +139,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       setStatus("error");
       setCheckError(errMessage(error));
-      // 失败也算一次检查，一小时后再试；保留上次发现的新版本
+      // 失败也算本小时查过，下个整点再试；保留上次发现的新版本
       persist(
         LAST_CHECK_KEY,
         JSON.stringify({
@@ -144,7 +152,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // 自动检查：启动后、窗口重新获得焦点或重新显示时、运行期间定时，到期才查。
+  // 自动检查：每个整点；启动后、窗口重新获得焦点或重新显示时、兜底轮询时，本小时还没查过才查。
   // 关掉开关会取消还没开始的检查
   useEffect(() => {
     if (!autoCheck) return;
@@ -161,11 +169,22 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
       const last = readLastCheck();
       if (checkDue(last, Date.now()) || last?.found) void check();
     }, STARTUP_DELAY_MS);
+    // 对准下一个整点（多等 1 秒，避免定时器略早触发时还算在上个小时），触发后再对准下一个
+    let hourly = 0;
+    const scheduleHourly = () => {
+      const now = Date.now();
+      hourly = window.setTimeout(() => {
+        checkIfDue();
+        scheduleHourly();
+      }, hourStart(now) + HOUR_MS - now + HOURLY_SLACK_MS);
+    };
+    scheduleHourly();
     const poll = window.setInterval(checkIfDue, DUE_POLL_MS);
     window.addEventListener("focus", checkIfDue);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearTimeout(startup);
+      window.clearTimeout(hourly);
       window.clearInterval(poll);
       window.removeEventListener("focus", checkIfDue);
       document.removeEventListener("visibilitychange", onVisible);

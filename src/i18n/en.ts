@@ -555,7 +555,7 @@ export const en: Record<keyof typeof zh, string> = {
   updateInstalling: "Downloaded and verified, installing…",
   updateInstallFailed: "Update failed: {error}",
   updateSection: "Updates",
-  updateAutoCheck: "Check for updates automatically (at most once an hour)",
+  updateAutoCheck: "Check for updates automatically (on every hour)",
   updatePrivacyHint:
     "Checking only requests this app's version list and update package from GitHub. No history is sent.",
   updateCheckNow: "Check for updates",
