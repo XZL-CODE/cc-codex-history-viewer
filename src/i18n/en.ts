@@ -26,6 +26,7 @@ export const en: Record<keyof typeof zh, string> = {
   agentClaude: "Claude Code",
   agentClaudeShort: "Claude",
   agentCodex: "Codex",
+  agentAntigravity: "Antigravity",
   agentAll: "All",
   agentFilterLabel: "Coding Agent data scope",
   overviewAgentSource: "Overview source",
@@ -189,6 +190,8 @@ export const en: Record<keyof typeof zh, string> = {
     "Estimated from reliably matched OpenAI API pricing; this is not actual ChatGPT subscription spend",
   costNoteAll:
     "API-equivalent estimate for models with reliable pricing; Codex amounts are not actual ChatGPT subscription spend",
+  costNoteAntigravity:
+    "Antigravity and Gemini CLI models are not priced yet; only tokens are counted",
   unknownModelNote:
     "{value} tokens from models without known pricing are excluded from cost",
   dailyCost: "Daily tokens & cost",
@@ -393,8 +396,14 @@ export const en: Record<keyof typeof zh, string> = {
   claudeDataDirPlaceholder: "Leave empty for default ~/.claude",
   codexDataDirLabel: "Codex data directory",
   codexDataDirPlaceholder: "Leave empty to use CODEX_HOME first, then ~/.codex",
+  geminiDataDirLabel: "Antigravity data directory",
+  geminiDataDirPlaceholder:
+    "Leave empty for default ~/.gemini (shared by Antigravity CLI and Gemini CLI)",
   claudeDataSource: "Claude Code",
   codexDataSource: "OpenAI Codex",
+  geminiDataSource: "Antigravity (incl. Gemini CLI)",
+  antigravityConversationsShort: "Antigravity CLI conversations",
+  geminiCliSessionsShort: "Gemini CLI sessions",
   advancedOverrides: "Advanced: per-path overrides",
   historyFileLabel: "History file (history.jsonl)",
   projectsDirLabel: "Projects directory (projects)",

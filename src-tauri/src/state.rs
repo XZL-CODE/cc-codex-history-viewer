@@ -52,10 +52,44 @@ pub struct CodexDataPaths {
     pub archived_sessions: PathBuf,
 }
 
+/// The Antigravity source: Antigravity CLI and the retired Gemini CLI share `~/.gemini`.
+#[derive(Debug, Clone)]
+pub struct GeminiDataPaths {
+    pub root: PathBuf,
+    /// Antigravity CLI input history: one line per prompt with its workspace.
+    pub antigravity_history: PathBuf,
+    /// Antigravity CLI conversations, `brain/<conversation id>/.system_generated/logs/`.
+    pub antigravity_brain: PathBuf,
+    /// Antigravity CLI `cache/last_conversations.json`: workspace to its latest conversation.
+    pub antigravity_last_conversations: PathBuf,
+    /// Gemini CLI sessions, `tmp/<project>/chats/`.
+    pub gemini_tmp: PathBuf,
+    /// Gemini CLI `projects.json`: project path to its directory name under `tmp/`.
+    pub gemini_projects: PathBuf,
+}
+
+impl GeminiDataPaths {
+    /// The standard layout below one `~/.gemini`-style root.
+    pub fn under(root: PathBuf) -> Self {
+        let antigravity_cli = root.join("antigravity-cli");
+        Self {
+            antigravity_history: antigravity_cli.join("history.jsonl"),
+            antigravity_brain: antigravity_cli.join("brain"),
+            antigravity_last_conversations: antigravity_cli
+                .join("cache")
+                .join("last_conversations.json"),
+            gemini_tmp: root.join("tmp"),
+            gemini_projects: root.join("projects.json"),
+            root,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DataPaths {
     pub claude: ClaudeDataPaths,
     pub codex: CodexDataPaths,
+    pub gemini: GeminiDataPaths,
 }
 
 fn project_root() -> PathBuf {
@@ -111,7 +145,8 @@ pub fn save_settings(app: &AppHandle, settings: &SettingsInput) -> Result<PathBu
     Ok(path)
 }
 
-/// Pure resolver used by tests. Explicit settings win, then CODEX_HOME, then ~/.codex.
+/// Pure resolver used by tests. Explicit settings win, then CODEX_HOME, then ~/.codex; the
+/// Antigravity root is the explicit setting, then ~/.gemini.
 pub fn resolve_from_settings_with(
     settings: &SettingsInput,
     codex_home: Option<OsString>,
@@ -138,8 +173,16 @@ pub fn resolve_from_settings_with(
     } else if let Some(path) = codex_home.filter(|path| !path.is_empty()) {
         PathBuf::from(path)
     } else {
-        home.map(|path| path.join(".codex"))
+        home.as_ref()
+            .map(|path| path.join(".codex"))
             .ok_or_else(|| "Unable to locate ~/.codex; configure codexDataDir.".to_string())?
+    };
+
+    let gemini_root = if !settings.gemini_data_dir.trim().is_empty() {
+        PathBuf::from(settings.gemini_data_dir.trim())
+    } else {
+        home.map(|path| path.join(".gemini"))
+            .ok_or_else(|| "Unable to locate ~/.gemini; configure geminiDataDir.".to_string())?
     };
 
     Ok(DataPaths {
@@ -155,6 +198,7 @@ pub fn resolve_from_settings_with(
             archived_sessions: codex_root.join("archived_sessions"),
             root: codex_root,
         },
+        gemini: GeminiDataPaths::under(gemini_root),
     })
 }
 
@@ -203,7 +247,17 @@ mod tests {
         .unwrap();
         assert_eq!(from_env.codex.root, PathBuf::from("/synthetic/env-codex"));
 
+        assert_eq!(
+            from_home.gemini.root,
+            PathBuf::from("/synthetic/home/.gemini")
+        );
+        assert_eq!(
+            from_home.gemini.antigravity_brain,
+            PathBuf::from("/synthetic/home/.gemini/antigravity-cli/brain")
+        );
+
         settings.codex_data_dir = "/synthetic/setting-codex".to_string();
+        settings.gemini_data_dir = "/synthetic/setting-gemini".to_string();
         let explicit = resolve_from_settings_with(
             &settings,
             Some(OsString::from("/synthetic/env-codex")),
@@ -213,6 +267,10 @@ mod tests {
         assert_eq!(
             explicit.codex.root,
             PathBuf::from("/synthetic/setting-codex")
+        );
+        assert_eq!(
+            explicit.gemini.gemini_tmp,
+            PathBuf::from("/synthetic/setting-gemini/tmp")
         );
     }
 }

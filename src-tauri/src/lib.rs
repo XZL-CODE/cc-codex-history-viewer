@@ -1,9 +1,11 @@
 // 模块声明为 pub：tests/ 下的集成测试（golden 测试）需要访问 parser 等模块。
+pub mod antigravity_parser;
 pub mod codex_parser;
 pub mod commands;
 pub mod content_search;
 pub mod export;
 pub mod external;
+pub mod gemini_parser;
 pub mod import;
 pub mod indexer;
 pub mod models;

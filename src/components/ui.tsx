@@ -109,6 +109,7 @@ type BadgeTone =
   | "muted"
   | "success"
   | "warning"
+  | "info"
   | "outline";
 
 const badgeTones: Record<BadgeTone, string> = {
@@ -117,6 +118,7 @@ const badgeTones: Record<BadgeTone, string> = {
   muted: "bg-surface-2 text-muted",
   success: "bg-success/15 text-success",
   warning: "bg-warning/15 text-warning",
+  info: "bg-info/15 text-info",
   outline: "border border-border text-muted",
 };
 

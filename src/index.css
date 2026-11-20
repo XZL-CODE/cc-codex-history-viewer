@@ -16,6 +16,8 @@
   --danger: #e5484d;
   --success: #2f9e63;
   --warning: #d98324;
+  /* Antigravity 来源的标识色（Claude Code 用 warning，Codex 用 success） */
+  --info: #1a73e8;
   --code-bg: #f6f7f9;
   --hl-comment: #6e7781;
   --hl-keyword: #cf222e;
@@ -50,6 +52,7 @@
   --danger: #ff6369;
   --success: #3dd68c;
   --warning: #f0a44a;
+  --info: #8ab4f8;
   --code-bg: #0f1014;
   --hl-comment: #8b949e;
   --hl-keyword: #ff7b72;
@@ -89,6 +92,7 @@
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-info: var(--info);
 }
 
 * {

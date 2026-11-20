@@ -26,6 +26,7 @@ import {
   encodePath,
   formatDuration,
   formatNumber,
+  isAgent,
   pathBasename,
   prettyPath,
 } from "@/lib/utils";
@@ -36,9 +37,23 @@ import { UsagePanel } from "@/components/conversation/UsagePanel";
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
+/** 在终端中继续该会话的命令；Antigravity 来源按写入它的 CLI 区分 */
+function resumeCommandFor(agent: Agent, source: string | null, sessionId: string) {
+  switch (agent) {
+    case "codex":
+      return `codex resume ${sessionId}`;
+    case "antigravity":
+      return source === "gemini-cli"
+        ? `gemini --resume ${sessionId}`
+        : `agy --conversation ${sessionId}`;
+    default:
+      return `claude --resume ${sessionId}`;
+  }
+}
+
 export function ConversationDetail() {
   const { agent: agentParam, sessionId } = useParams();
-  const agent: Agent = agentParam === "codex" ? "codex" : "claude";
+  const agent: Agent = isAgent(agentParam) ? agentParam : "claude";
   const navigate = useNavigate();
   const t = useT();
   const { data, isLoading, isError, error } = useConversation(
@@ -97,9 +112,7 @@ export function ConversationDetail() {
   const resumeCommand = data
     ? [
         data.project ? `cd "${data.project}" && ` : "",
-        data.agent === "codex"
-          ? `codex resume ${data.sessionId}`
-          : `claude --resume ${data.sessionId}`,
+        resumeCommandFor(data.agent, data.source, data.sessionId),
       ].join("")
     : "";
 

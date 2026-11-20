@@ -4,7 +4,7 @@ use cc_history_viewer_lib::codex_parser;
 use cc_history_viewer_lib::indexer;
 use cc_history_viewer_lib::models::{Agent, AgentFilter, UsageStats};
 use cc_history_viewer_lib::parser;
-use cc_history_viewer_lib::state::{ClaudeDataPaths, CodexDataPaths, DataPaths};
+use cc_history_viewer_lib::state::{ClaudeDataPaths, CodexDataPaths, DataPaths, GeminiDataPaths};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -95,6 +95,7 @@ impl SyntheticTree {
                 sessions: codex.join("sessions"),
                 archived_sessions: codex.join("archived_sessions"),
             },
+            gemini: GeminiDataPaths::under(root.join("gemini")),
         };
         let cache = root.join("app-data/index_cache_v5.json");
         Self {
@@ -211,6 +212,7 @@ fn one_or_both_missing_sources_produce_valid_indexes() {
             sessions: missing.join("sessions"),
             archived_sessions: missing.join("archived_sessions"),
         },
+        gemini: GeminiDataPaths::under(missing.join("gemini")),
     };
     let claude_index = indexer::load_or_build(&claude_only, None);
     assert_eq!(claude_index.stats_for(AgentFilter::Claude).total_prompts, 1);
@@ -229,6 +231,7 @@ fn one_or_both_missing_sources_produce_valid_indexes() {
             sessions: missing.join("codex-sessions"),
             archived_sessions: missing.join("codex-archived"),
         },
+        gemini: GeminiDataPaths::under(missing.join("gemini")),
     };
     let empty = indexer::load_or_build(&no_sources, None);
     assert!(empty.prompts.is_empty());

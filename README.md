@@ -4,7 +4,7 @@
 
 # Coding Agent History Viewer
 
-**A local, read-only viewer for Claude Code and OpenAI Codex history**
+**A local, read-only viewer for Claude Code, OpenAI Codex and Antigravity history**
 
 English · [简体中文](./README.zh-CN.md)
 
@@ -12,11 +12,11 @@ English · [简体中文](./README.zh-CN.md)
 
 ---
 
-Coding Agent History Viewer is a Tauri desktop application that scans Claude Code and OpenAI Codex history locally and groups prompts, sessions, tool calls, and token usage by working directory. It only contacts GitHub to check for and download updates, and never uploads history.
+Coding Agent History Viewer is a Tauri desktop application that scans Claude Code, OpenAI Codex and Antigravity (Antigravity CLI plus the Gemini CLI it replaced) history locally and groups prompts, sessions, tool calls, and token usage by working directory. It only contacts GitHub to check for and download updates, and never uploads history.
 
 ## Features
 
-- Filter the overview by **Claude Code / Codex / All**. All is the default and the choice is persisted locally.
+- Filter the overview by **Claude Code / Codex / Antigravity / All**. All is the default and the choice is persisted locally.
 - Browse projects, prompts, and sessions by working directory. In All mode, an identical `cwd` is one project.
 - View recent prompts, global and folder search, full conversations, Markdown, tool calls, and thinking content.
 - **Full-text conversation search**: beyond prompts, scan assistant replies, thinking summaries, and tool-call inputs on demand; hits jump to the exact message with keywords highlighted. No index is built or written.
@@ -28,7 +28,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - **External sessions (read someone else's exported Markdown)**: import a single-conversation Markdown file that someone else exported with this app from the sidebar's "External sessions" page and read it in the same conversation view. The detailed and brief exports of one session merge into one entry with a "Full / Dialogue only" switch. Imports last only for the current run unless you click "Keep", which copies them into the app's data directory; nothing is written to `~/.claude` or `~/.codex`, and external sessions stay out of stats and search. See [External sessions](#external-sessions).
 - **Conversation view additions**: tool outputs that Claude Code persisted to a file (`<persisted-output>`) can be expanded in full on demand and are inlined in exports; files referenced with @ or uploaded show as a collapsed "Attachment" block; thinking blocks that carry only a signature are hidden.
 - **Time range and activity calendar**: scope the overview to all time, last 7 / 30 days, this month, or a custom range; a calendar heatmap fills in days without records.
-- Preserve the Claude Code or Codex identity on prompts, sessions, and exports.
+- Preserve the Claude Code, Codex or Antigravity identity on prompts, sessions, and exports.
 - Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
 - Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache. The index builds on a background thread with live progress; refresh re-parses only changed files, and a full rebuild lives in Settings.
 - Search is its own route so the back button returns to results; window position and size are remembered; the theme can follow the system.
@@ -57,7 +57,20 @@ Codex reads:
 <CODEX_ROOT>/archived_sessions/*.jsonl
 ```
 
-`CODEX_ROOT` precedence is explicit `codexDataDir`, then `CODEX_HOME`, then `~/.codex`. The settings view reports configured and resolved paths separately for both products. Existing Claude-only settings remain valid. The bundle identifier stays `com.xzl.cchistoryviewer` so existing application settings are retained.
+`CODEX_ROOT` precedence is explicit `codexDataDir`, then `CODEX_HOME`, then `~/.codex`.
+
+Antigravity reads below `<GEMINI_ROOT>`, the explicit `geminiDataDir` or else `~/.gemini`, which Antigravity CLI and Gemini CLI share:
+
+```text
+<GEMINI_ROOT>/antigravity-cli/history.jsonl
+<GEMINI_ROOT>/antigravity-cli/brain/<conversation id>/.system_generated/logs/transcript_full.jsonl   (else transcript.jsonl)
+<GEMINI_ROOT>/antigravity-cli/cache/last_conversations.json
+<GEMINI_ROOT>/tmp/<project>/chats/session-*.jsonl | session-*.json
+<GEMINI_ROOT>/tmp/<project>/chats/<parent session id>/<sub-agent session id>.jsonl
+<GEMINI_ROOT>/tmp/<project>/.project_root, <GEMINI_ROOT>/projects.json
+```
+
+The settings view reports configured and resolved paths separately for each product. Existing Claude-only settings remain valid. The bundle identifier stays `com.xzl.cchistoryviewer` so existing application settings are retained.
 
 ## Codex compatibility
 
@@ -71,11 +84,20 @@ Codex reads:
 
 Codex JSONL is streamed rather than loaded as a whole, including histories larger than 1 GB, while files continue to be scanned in parallel.
 
+## Antigravity compatibility
+
+Antigravity covers Antigravity CLI (`agy`) and the Gemini CLI it replaced; the session's source reads `antigravity-cli` or `gemini-cli`, and the resume command follows it (`agy --conversation <id>` / `gemini --resume <id>`). Only plain-text files are read: the Antigravity IDE and desktop app, and the CLI's SQLite and protobuf files, are out of scope. See the [Agent Note](.agents/notes/proposed/2026-11-20-antigravity-source.md).
+
+- **Antigravity CLI**: each line of the transcript is one step. `USER_INPUT` is the prompt (only the `<USER_REQUEST>` block; the injected local time and model-change notes are dropped), `PLANNER_RESPONSE` is one model call with its reply, thinking, tool calls, model and tokens, and the `GENERIC` steps after it are the tool results, paired with the calls in order. Reminders in `SYSTEM_MESSAGE` are hidden; a report a sub-agent sends back shows as a `subagent` result. `transcript_full.jsonl` keeps tool arguments typed; `transcript.jsonl`, which JSON-encodes every argument value, is used only when the full one is missing.
+- **Working directory**: transcripts carry none. It comes from `history.jsonl` (by conversation ID, else a line with the same prompt text within five minutes, since a conversation's first input is logged before it has an ID), then `cache/last_conversations.json`; a sub-agent inherits its parent's. A conversation found nowhere (some `agy -p` runs) has no folder.
+- **Sub-agents**: an Antigravity CLI conversation that opens with a message from another conversation, and a Gemini CLI session with `kind: subagent`, are sub-agents. They are not listed as sessions or prompts; their calls roll up into the parent session.
+- **Gemini CLI**: sessions are replayed the way Gemini CLI loads them: the header line, message lines (same ID replaces), `$set` (a `messages` array replaces all), `$patch` (content, tool results, removals, reordering) and `$rewindTo`; an older `session-*.json` is one whole document. Injected `<session_context>` / `<hook_context>` turns are not prompts. The project path comes from `.project_root` or `projects.json`; a directory still named by the SHA-256 of the path is matched against every known working directory.
+
 ## Domain and filtering invariants
 
-The normalized model uses `agent = claude | codex` and `origin = history | conversation | both`. `origin` describes where a prompt was observed, not which product produced it. Agent identity is part of every stable ID, session route, deduplication key, and cache key. Equal session IDs or prompt text from different products never collide or deduplicate.
+The normalized model uses `agent = claude | codex | antigravity` and `origin = history | conversation | both`. `origin` describes where a prompt was observed, not which product produced it. Agent identity is part of every stable ID, session route, deduplication key, and cache key. Equal session IDs or prompt text from different products never collide or deduplicate.
 
-For the All filter, prompt count, session count, and every normalized token component equal Claude plus Codex. Project count is the set union of `cwd` paths. Merged project navigation never removes the agent identity from its prompts and sessions.
+For the All filter, prompt count, session count, and every normalized token component equal the sum of the three products. Project count is the set union of `cwd` paths. Merged project navigation never removes the agent identity from its prompts and sessions.
 
 ## Token accounting
 
@@ -100,17 +122,35 @@ output = output_tokens
 reasoningOutput = reasoning_output_tokens
 ```
 
+Antigravity CLI `input_tokens` excludes cache reads, and `output_tokens` already includes thinking without splitting it out:
+
+```text
+uncachedInput = input_tokens
+cacheRead = cache_read_tokens
+output = output_tokens
+reasoningOutput = 0
+```
+
+Gemini CLI `tokens.input` includes the cached part, and thoughts and tool-use prompt tokens are counted beside it (`total = input + output + thoughts + tool`):
+
+```text
+uncachedInput = input - cached + tool
+cacheRead = cached
+output = output + thoughts
+reasoningOutput = thoughts
+```
+
 Codex `input_tokens` already includes cached input. Copied fork/resume usage is removed with a stable event fingerprint independent of file path and a new session ID. Cache hit rate is `cacheRead / (uncachedInput + cacheRead)` and displays “—” for a zero denominator.
 
-Per-session usage follows the same deduplication: sessions are visited in start-time order and each call counts in the first session that recorded it, so fork/resume copies stay with the original session and Claude sub-agent calls roll up into their parent session. Session totals therefore add up to the global totals.
+Per-session usage follows the same deduplication: sessions are visited in start-time order and each call counts in the first session that recorded it, so fork/resume copies stay with the original session and sub-agent calls roll up into their parent session. Session totals therefore add up to the global totals.
 
 The conversation view's "Token usage details" panel shares that attribution: the index remembers which session owns each unique call, the detail lists every call the session owns (sub-agent transcripts included), and the per-call and per-model token sums equal the session total in the header. The chip on an assistant message comes from that record itself: a Claude call is written as one record per content block and only the first carries usage; a Codex `token_count` event lands on the nearest earlier model-output message (tool results excluded). Calls copied in by resume/fork that belong to another session are greyed out and excluded from every number. Cache saving = cost with every input token at the uncached rate − estimated cost, negative when cache writes outweigh reads.
 
-The panel also shows each call's reasoning effort as recorded (`low` / `medium` / `high` / `xhigh` / `max`, plus `minimal` for Codex): Claude Code's top-level `perTurnEffort` on an assistant record, falling back to `effort`; Codex's `turn_context.effort`, shared by every call in that turn. Records from older versions carry no effort and show "not recorded"; no default is guessed. The effort appears in the message chip and call chart tooltips and on the output tile (with per-effort call counts, sub-agents included, when a session mixes efforts), and the per-model table splits each model by effort. Effort does not enter the cost estimate.
+The panel also shows each call's reasoning effort as recorded (`low` / `medium` / `high` / `xhigh` / `max`, plus `minimal` for Codex): Claude Code's top-level `perTurnEffort` on an assistant record, falling back to `effort`; Codex's `turn_context.effort`, shared by every call in that turn. Records from older versions carry no effort and show "not recorded"; no default is guessed. Antigravity records no effort field either: the level is part of the model name (`gemini-3.8-flash-low`), which is shown as recorded. The effort appears in the message chip and call chart tooltips and on the output tile (with per-effort call counts, sub-agents included, when a session mixes efforts), and the per-model table splits each model by effort. Effort does not enter the cost estimate.
 
 ## Cost, cache, and privacy
 
-Codex cost is labelled an **API-equivalent estimate**. It is a reference conversion using reliably matched OpenAI API token prices, not an actual ChatGPT/Codex subscription charge, allowance, or credit balance. Unknown models display “—”; combined totals include known estimated cost and disclose how many tokens have unknown pricing. Built-in rates were checked on 2026-07-17 against [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and official OpenAI model pages such as [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max), [o4-mini](https://developers.openai.com/api/docs/models/o4-mini), and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).
+Codex cost is labelled an **API-equivalent estimate**. It is a reference conversion using reliably matched OpenAI API token prices, not an actual ChatGPT/Codex subscription charge, allowance, or credit balance. Unknown models display “—”; combined totals include known estimated cost and disclose how many tokens have unknown pricing. Antigravity models are not priced yet, so their tokens are counted and their cost shows “—”. Built-in rates were checked on 2026-07-17 against [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and official OpenAI model pages such as [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max), [o4-mini](https://developers.openai.com/api/docs/models/o4-mini), and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).
 
 Claude cache writes are priced by tier: 5-minute at 1.25× the input rate, 1-hour at 2×; records without the split count as 5-minute.
 
@@ -120,7 +160,7 @@ The index builds on a background thread and reports progress while other queries
 
 Full-text conversation search builds no index: each search streams the session files in the current scope in parallel, prefilters raw lines with a case-insensitive byte search, and parses only matching lines. It covers user messages, assistant replies, thinking summaries, and tool-call inputs; tool results (file contents, command output) and injected developer/system or `AGENTS.md` context never match. Every keyword must appear in the same message. At most 20 hits per session and 300 in total are returned, with a notice when results are truncated.
 
-The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never deletes data under the Claude/Codex roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, Markdown files explicitly exported by the user, external-session Markdown the user chose to keep (inside the app's data directory), and its own application files when the user installs an update. Its only network traffic is the update check and download from this repository's GitHub Releases, which carries no history; the automatic check can be turned off in Settings. Links inside conversations open in the system browser only when clicked; remote images in local conversations load directly, while those in external sessions show as links.
+The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, reads no Antigravity credentials, SQLite or protobuf files, makes no history upload or telemetry request, never writes under `~/.gemini`, and never deletes data under the Claude/Codex/Gemini roots. The only write into `~/.claude` is a session import the user confirmed, which touches only session files below `projects/<dir>/`, overwrites same-named files and never deletes anything. Beyond that it writes only its own settings, index cache, window state, Markdown files explicitly exported by the user, external-session Markdown the user chose to keep (inside the app's data directory), and its own application files when the user installs an update. Its only network traffic is the update check and download from this repository's GitHub Releases, which carries no history; the automatic check can be turned off in Settings. Links inside conversations open in the system browser only when clicked; remote images in local conversations load directly, while those in external sessions show as links.
 
 ## Importing Claude Code sessions
 
@@ -142,7 +182,7 @@ projects/<project dir>/<session id>/      ← side directory: tool-results/*.txt
 
 A single-conversation Markdown file that someone else exported with this app (the conversation view's "Export Markdown") can be read through **Import Markdown** on the sidebar's "External sessions" page; several files can be picked at once. They never become local sessions.
 
-- **Accepted files**: single-conversation exports (titled "# Conversation Export" or "# 对话导出"), with English or Chinese labels, from Claude Code or Codex. The per-session files of a multi-file batch export use the same format and can be imported too; a merged batch export, index.md, prompt exports and search-result exports are rejected with a reason.
+- **Accepted files**: single-conversation exports (titled "# Conversation Export" or "# 对话导出"), with English or Chinese labels, from Claude Code, Codex or Antigravity. The per-session files of a multi-file batch export use the same format and can be imported too; a merged batch export, index.md, prompt exports and search-result exports are rejected with a reason.
 - **Detailed and brief**: files merge by product + session ID. A file with thinking, tool calls, tool results or attachments is the detailed version, anything else the brief one; importing the same version again replaces it. "Full" shows the detailed version; "Dialogue only" shows the brief version, or, without one, the detailed version minus thinking, tool calls, tool results and attachments (the same rule as exporting with "Include tool calls & thinking" unticked). With only the brief version, only the dialogue is available.
 - **Fidelity**: messages show the minute-level time printed in the file; several text blocks of one message merge into one; tool-call inputs are restored as JSON and render semantically; tool results name their tool (inferred from call order for older exports); tool results and attachments keep the exported full text without the display clip used for local sessions. Exports carry no per-call usage, so the token usage panel is hidden and only the file header's token total and estimated cost are shown.
 - **Temporary or kept**: imports live in memory and disappear when the app quits. "Keep" copies the original Markdown into `external_sessions/<agent>-<session id>/` under the app's data directory and loads it on the next launch; importing a new version of a kept session writes it there too. "Delete" removes the entry and, for a kept one, that directory.

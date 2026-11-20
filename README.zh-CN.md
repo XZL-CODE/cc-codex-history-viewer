@@ -4,7 +4,7 @@
 
 # Coding Agent History Viewer
 
-**本地、只读地浏览 Claude Code 与 OpenAI Codex 的 Prompt、会话和用量**
+**本地、只读地浏览 Claude Code、OpenAI Codex 与 Antigravity 的 Prompt、会话和用量**
 
 [English](./README.md) · 简体中文
 
@@ -12,11 +12,11 @@
 
 ---
 
-Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Claude Code 与 OpenAI Codex 的历史文件，按工作目录聚合 Prompt、会话、工具调用和 Token 用量。应用只在检查和下载更新时访问 GitHub，不会把历史上传到任何服务。
+Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Claude Code、OpenAI Codex 与 Antigravity（Antigravity CLI 及它接替的 Gemini CLI）的历史文件，按工作目录聚合 Prompt、会话、工具调用和 Token 用量。应用只在检查和下载更新时访问 GitHub，不会把历史上传到任何服务。
 
 ## 功能
 
-- 在概览顶部按 **Claude Code / Codex / 全部** 筛选，默认选择“全部”并在本机持久化选择。
+- 在概览顶部按 **Claude Code / Codex / Antigravity / 全部** 筛选，默认选择“全部”并在本机持久化选择。
 - 按工作目录浏览项目、Prompt 和会话；“全部”模式下相同 `cwd` 合并为一个项目。
 - 查看最近 Prompt、全局搜索、文件夹内搜索、完整会话、Markdown、工具调用和思考内容。
 - **全文搜索会话内容**：除 Prompt 外，还能按需扫描助手回复、思考摘要与工具调用参数，命中可跳转到对话中的具体消息并高亮关键词；不建索引、不落盘。
@@ -28,7 +28,7 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 - **外部会话（临时查看他人导出的 Markdown）**：在侧栏「外部会话」导入别人用本应用导出的单会话 Markdown，用同一套对话详情阅读。同一会话的详细版与简洁版合并为一条，可在「完整 / 只看对话」之间切换。默认只在本次运行中保留，点「保留」才复制到应用数据目录；不写入 `~/.claude` 或 `~/.codex`，不计入统计与搜索。详见[外部会话](#外部会话)。
 - **对话详情补充**：`<persisted-output>` 标记的超大工具输出可在详情里按需展开完整内容，导出时内联；@ 引用或上传的文件以「附件」折叠块显示；只有 signature、正文为空的思考块不再显示。
 - **统计范围与活跃度日历**：概览支持全部 / 近 7 天 / 近 30 天 / 本月 / 自定义区间，日历热力图补齐没有记录的日期。
-- Prompt、会话和导出内容保留 Claude Code 或 Codex 来源标识。
+- Prompt、会话和导出内容保留 Claude Code、Codex 或 Antigravity 来源标识。
 - 统计每日活动、小时与星期分布、项目排行、模型、CLI 版本、Token、缓存命中率和估算成本。
 - 按文件 `mtime` 建立增量索引，并行扫描大历史库；JSONL 按行流式解析。索引在后台线程构建并实时显示进度，刷新默认只重解析变化的文件，全量重建放在设置中。
 - 搜索是独立路由，返回键可回到结果列表；记住窗口位置与尺寸；主题可跟随系统。
@@ -71,7 +71,19 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 2. 环境变量 `CODEX_HOME`
 3. `~/.codex`
 
-设置页会分别显示两种产品的配置值、最终解析路径和存在状态。保存设置后重新建立索引，无需重新编译。旧版仅含 Claude 字段的设置文件会自动按默认值补齐 Codex 配置。
+### Antigravity
+
+Antigravity CLI 与 Gemini CLI 共用 `<GEMINI_ROOT>`：设置中的 `geminiDataDir`，留空时为 `~/.gemini`。
+
+| 数据 | 默认路径 | 用途 |
+|---|---|---|
+| Antigravity CLI 输入历史 | `<GEMINI_ROOT>/antigravity-cli/history.jsonl` | Prompt 与所在工作区 |
+| Antigravity CLI 会话 | `<GEMINI_ROOT>/antigravity-cli/brain/<会话 ID>/.system_generated/logs/transcript_full.jsonl`（没有时读 `transcript.jsonl`） | 完整步骤流 |
+| 工作区到最近会话 | `<GEMINI_ROOT>/antigravity-cli/cache/last_conversations.json` | 补历史里找不到的工作区 |
+| Gemini CLI 会话 | `<GEMINI_ROOT>/tmp/<项目>/chats/session-*.jsonl`、更早的 `session-*.json`、子代理的 `chats/<父会话 ID>/<子会话 ID>.jsonl` | 完整会话 |
+| Gemini CLI 项目路径 | `<GEMINI_ROOT>/tmp/<项目>/.project_root`、`<GEMINI_ROOT>/projects.json` | 会话所属项目 |
+
+设置页会分别显示三种产品的配置值、最终解析路径和存在状态。保存设置后重新建立索引，无需重新编译。旧版仅含 Claude 字段的设置文件会自动按默认值补齐 Codex 配置。
 
 设置文件位于系统应用配置目录。macOS 默认是：
 
@@ -93,19 +105,28 @@ Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Cl
 
 Codex 文件已可能超过 1 GB。解析器逐行读取，不会先把整个 JSONL 加载进内存；会话文件仍按文件并行扫描。
 
+## Antigravity 格式兼容
+
+Antigravity 来源包括 Antigravity CLI（`agy`）和它接替的 Gemini CLI；会话的「来源」显示 `antigravity-cli` 或 `gemini-cli`，Resume 命令随之为 `agy --conversation <ID>` 或 `gemini --resume <ID>`。只读纯文本，不读 Antigravity IDE 与桌面应用，也不读 CLI 的 SQLite 与 protobuf 文件。设计决定见 [Agent Note：第三个来源 Antigravity](.agents/notes/proposed/2026-11-20-antigravity-source.md)。
+
+- **Antigravity CLI**：转录每行是一步。`USER_INPUT` 是用户输入，只取 `<USER_REQUEST>` 块，去掉注入的本地时间与换模型提示；`PLANNER_RESPONSE` 是一次模型调用，含回复、思考、工具调用、模型与 Token；紧随其后的 `GENERIC` 是工具结果，按顺序对应调用。`SYSTEM_MESSAGE` 里的提醒不显示，子代理发回的报告显示为 `subagent` 结果。`transcript_full.jsonl` 的工具参数保留原类型；`transcript.jsonl` 把每个参数值再编码成 JSON 字符串，只在没有前者时读取并还原。
+- **工作目录**：转录里没有。先按会话 ID 查 `history.jsonl`；会话第一句输入写入历史时还没有 ID，所以再找 5 分钟内文字相同的历史行；再查 `cache/last_conversations.json`；子代理沿用父会话的。都找不到的会话（部分 `agy -p`）不归入任何文件夹。
+- **子代理**：以另一个会话发来的消息开头的 Antigravity CLI 会话，以及 `kind: subagent` 的 Gemini CLI 会话，都是子代理。不单独列为会话和 Prompt，调用并入父会话。
+- **Gemini CLI**：按 Gemini CLI 自己的规则回放：首行元数据；带 `id` 的行新增消息，同 ID 替换；`$set` 更新元数据，带 `messages` 时整体替换；`$patch` 修改内容、补工具结果、删除或重排；`$rewindTo` 删掉该消息及之后的消息。更早的 `session-*.json` 是一整个 JSON。注入的 `<session_context>`、`<hook_context>` 不算 Prompt。项目路径取 `.project_root` 或 `projects.json`；目录仍以路径 SHA-256 命名的旧会话，与所有已知工作目录比对哈希。
+
 ## 统一模型与筛选口径
 
 公共领域模型使用：
 
-- `agent`: `claude | codex`
+- `agent`: `claude | codex | antigravity`
 - `origin`: `history | conversation | both`
 
 `origin` 只描述 Prompt 来自输入历史、会话文件或两者，不再与产品来源混用。Prompt、项目、会话、消息、用量和缓存记录均保留 `agent`。稳定 ID、会话映射、路由、去重键和缓存键都包含 `agent`，因此两个产品即使出现相同 `session_id` 也不会冲突；跨产品的相同文本不会互相去重。
 
 “全部”筛选满足以下恒等关系：
 
-- Prompt 数、会话数和每个归一化 Token 分项等于 Claude 与 Codex 之和。
-- 项目数等于两个产品 `cwd` 路径的并集大小，不是两个项目数简单相加。
+- Prompt 数、会话数和每个归一化 Token 分项等于三个产品之和。
+- 项目数等于各产品 `cwd` 路径的并集大小，不是项目数简单相加。
 - 相同 `cwd` 的项目在导航中合并，但其 Prompt 和会话仍保留 `agent`。
 
 ## Token 统计
@@ -150,6 +171,24 @@ output = output_tokens
 reasoningOutput = reasoning_output_tokens
 ```
 
+Antigravity CLI 的 `input_tokens` 不含缓存读取，`output_tokens` 已含思考但纯文本里没有拆分：
+
+```text
+uncachedInput = input_tokens
+cacheRead = cache_read_tokens
+output = output_tokens
+reasoningOutput = 0
+```
+
+Gemini CLI 的 `tokens.input` 已含缓存命中部分，思考与工具调用提示 Token 另计（`total = input + output + thoughts + tool`）：
+
+```text
+uncachedInput = input - cached + tool
+cacheRead = cached
+output = output + thoughts
+reasoningOutput = thoughts
+```
+
 Codex 的 `input_tokens` 已包含 `cached_input_tokens`，所以不能再把两者作为两个完整输入量相加。fork、resume 或派生会话可能复制历史 Token 事件；索引使用不依赖文件路径和新会话 ID 的稳定事件指纹跨文件去重。
 
 缓存命中率为：
@@ -160,17 +199,17 @@ cacheRead / (uncachedInput + cacheRead)
 
 分母为 0 时显示“—”。概览、按天、按模型和按项目的总 Token 均使用同一公式。
 
-每个会话的 Token 与成本按同一去重规则归属：按会话开始时间顺序，一条调用首次出现在哪个会话就计入哪个会话，fork/resume 复制的历史调用只计入原会话；Claude 子代理的调用并入父会话。因此各会话之和等于全局总量。
+每个会话的 Token 与成本按同一去重规则归属：按会话开始时间顺序，一条调用首次出现在哪个会话就计入哪个会话，fork/resume 复制的历史调用只计入原会话；子代理的调用并入父会话。因此各会话之和等于全局总量。
 
 对话详情页的「Token 用量明细」面板与这套归属完全同源：索引记住每条唯一调用属于哪个会话，详情按此列出本会话的全部调用（含子代理文件里的调用），按调用与按模型的 Token 之和都等于页头的会话总量。每条助手消息上的用量标签来自该记录自身：Claude 一次调用按内容块拆成多条记录，只有首条带用量；Codex 的 `token_count` 事件归到它前面最近一条模型输出的消息（工具结果不算）。由 resume/fork 复制进来、已计入原会话的调用会灰显标注，不计入本会话的任何数字。缓存节省 = 全部输入按非缓存价计的成本 − 估算成本，缓存写多于读时为负。
 
-面板也显示每次调用的推理档位，取记录里的原值（`low` / `medium` / `high` / `xhigh` / `max`，Codex 还有 `minimal`）：Claude Code 读助手记录顶层的 `perTurnEffort`，缺失时用 `effort`；Codex 读每轮 `turn_context.effort`，同一轮的调用共用。旧版本的记录没有档位，显示「未记录」，不推测默认值。档位出现在消息用量标签与调用图的悬停、输出卡片（多档位时列出各档位调用次数，含子代理），按模型表在同一模型下按档位分行。档位不参与成本估算。设计决定见 [Agent Note：用量明细显示推理档位](.agents/notes/proposed/2026-11-19-usage-reasoning-effort.md)。
+面板也显示每次调用的推理档位，取记录里的原值（`low` / `medium` / `high` / `xhigh` / `max`，Codex 还有 `minimal`）：Claude Code 读助手记录顶层的 `perTurnEffort`，缺失时用 `effort`；Codex 读每轮 `turn_context.effort`，同一轮的调用共用。旧版本的记录没有档位，显示「未记录」，不推测默认值。Antigravity 的记录也没有档位字段，档位写在模型名里（如 `gemini-3.8-flash-low`），模型名照原样显示。档位出现在消息用量标签与调用图的悬停、输出卡片（多档位时列出各档位调用次数，含子代理），按模型表在同一模型下按档位分行。档位不参与成本估算。设计决定见 [Agent Note：用量明细显示推理档位](.agents/notes/proposed/2026-11-19-usage-reasoning-effort.md)。
 
 ## 成本说明
 
 成本按产品和可靠匹配的具体模型分别估算。Codex 成本显示为 **API 等价估算**，仅表示按对应 OpenAI API 标准 Token 单价换算的参考值，不代表 ChatGPT 或 Codex 订阅的实际账单、额度或积分消耗。
 
-无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
+无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。Antigravity 的模型暂未定价，只统计 Token，成本显示“—”。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
 
 Claude 缓存写按 5 分钟档（输入价 ×1.25）与 1 小时档（输入价 ×2）分别计价；旧记录没有分档字段时全部按 5 分钟档。
 
@@ -206,7 +245,7 @@ projects/<项目目录名>/<会话ID>/          ← 同名旁挂目录：tool-re
 
 别人用本应用导出的单会话 Markdown（对话详情页的「导出 Markdown」）可以在侧栏「外部会话」里点「导入 Markdown」临时阅读，可一次多选。它们不会成为本机会话。设计决定见 [Agent Note：外部会话](.agents/notes/implemented/2026-10-10-external-markdown-sessions.md)。
 
-- **支持的文件**：单会话导出（标题为「# 对话导出」或「# Conversation Export」），中英文标签都识别，Claude Code 与 Codex 都支持。多文件批量导出里每个会话的文件与单会话导出格式相同，也可以导入；合并成一份的批量导出、index.md、Prompt 导出和搜索结果导出会被拒绝并说明原因。
+- **支持的文件**：单会话导出（标题为「# 对话导出」或「# Conversation Export」），中英文标签都识别，Claude Code、Codex 与 Antigravity 都支持。多文件批量导出里每个会话的文件与单会话导出格式相同，也可以导入；合并成一份的批量导出、index.md、Prompt 导出和搜索结果导出会被拒绝并说明原因。
 - **详细版与简洁版**：按产品 + 会话 ID 合并为一条。含思考、工具调用、工具结果或附件的文件算详细版，其余算简洁版；同一版本再次导入时替换旧的。「完整」显示详细版；「只看对话」显示简洁版，没有简洁版时由详细版去掉思考、工具调用、工具结果与附件得到，规则与导出时不勾选「包含工具调用与思考过程」相同。只导入了简洁版时只能看对话。
 - **还原程度**：消息按文件里的分钟级时间原样显示；同一条消息里的多个文本块合并为一段；工具调用参数按 JSON 还原，按语义展示；工具结果标出所属工具（旧版导出按调用顺序推断）；工具结果与附件保留导出时的全文，不套用本机会话的展示截断。导出里没有逐次调用的用量，所以不显示 Token 用量明细面板，只显示文件头里的 Token 总量与估算成本。
 - **临时与保留**：导入的会话默认只在内存里，关闭应用即消失。点「保留」把原始 Markdown 复制到应用数据目录的 `external_sessions/<产品>-<会话ID>/`，下次启动自动载入；已保留的会话再导入新版本时同步写入。「删除」移除该条目，已保留的会同时删除这个目录。
@@ -231,6 +270,7 @@ Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/t
 
 - 不读取 Codex `auth.json`。
 - 不把 Codex 私有 SQLite 表作为主要数据源。
+- 不读取 Antigravity 的凭据、SQLite 与 protobuf 文件，不写入 `~/.gemini`。
 - 不上传、不遥测历史内容。联网只用于检查和下载更新：只请求本仓库 GitHub Release 上的版本清单和更新包，请求里不带任何历史内容；自动检查可在设置中关闭。
 - 不修改或删除 `~/.codex` 及自定义 Codex 目录中的任何内容；对 `~/.claude` 唯一的写入是用户主动确认的会话导入，且只写 `projects/<目录名>/` 之下的会话文件，只覆盖同名文件，绝不删除。
 - 应用只写自身设置、索引缓存、窗口位置状态、用户主动导出的 Markdown 文件、用户主动导入的会话文件、用户选择保留的外部会话 Markdown（应用数据目录内），以及用户确认安装更新时替换应用自身；全文搜索按需读取会话文件，不写任何索引。

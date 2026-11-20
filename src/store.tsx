@@ -15,6 +15,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { api, errMessage } from "@/lib/api";
 import type { DictKey } from "@/i18n";
 import type { AgentFilter, IndexProgress } from "@/lib/types";
+import { isAgent } from "@/lib/utils";
 import type { SearchScope } from "@/lib/search";
 
 export type { SearchScope };
@@ -101,7 +102,7 @@ function readTheme(): ThemeMode {
 function readAgentFilter(): AgentFilter {
   try {
     const saved = localStorage.getItem(AGENT_FILTER_KEY);
-    if (saved === "claude" || saved === "codex" || saved === "all") return saved;
+    if (saved === "all" || isAgent(saved)) return saved;
   } catch {
     /* 无效或不可用时回退 */
   }

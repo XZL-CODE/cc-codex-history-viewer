@@ -687,6 +687,8 @@ impl RolloutAccumulator {
             source: primary.source.clone(),
             models: self.models,
             is_subagent: primary.is_subagent,
+            parent_session_id: None,
+            project_hash: None,
             started_at,
             ended_at,
             message_count,

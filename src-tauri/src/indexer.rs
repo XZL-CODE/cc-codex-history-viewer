@@ -1,10 +1,10 @@
 //! Agent-aware incremental index construction and aggregation.
 
-use crate::codex_parser;
 use crate::models::*;
 use crate::parser::{self, ConvFileResult, RawPrompt, UsageEntry};
 use crate::pricing;
 use crate::state::DataPaths;
+use crate::{antigravity_parser, codex_parser, gemini_parser};
 use chrono::{Datelike, Local, TimeZone, Timelike};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -33,9 +33,11 @@ pub struct AppIndex {
     projects_all: Vec<ProjectInfo>,
     projects_claude: Vec<ProjectInfo>,
     projects_codex: Vec<ProjectInfo>,
+    projects_antigravity: Vec<ProjectInfo>,
     stats_all: AppStats,
     stats_claude: AppStats,
     stats_codex: AppStats,
+    stats_antigravity: AppStats,
     pub source_files: usize,
     pub built_at: i64,
     pub from_cache: bool,
@@ -47,6 +49,7 @@ impl AppIndex {
         match filter {
             AgentFilter::Claude => &self.projects_claude,
             AgentFilter::Codex => &self.projects_codex,
+            AgentFilter::Antigravity => &self.projects_antigravity,
             AgentFilter::All => &self.projects_all,
         }
     }
@@ -55,12 +58,13 @@ impl AppIndex {
         match filter {
             AgentFilter::Claude => &self.stats_claude,
             AgentFilter::Codex => &self.stats_codex,
+            AgentFilter::Antigravity => &self.stats_antigravity,
             AgentFilter::All => &self.stats_all,
         }
     }
 
     /// Every call attributed to one session in `usage_events` order (by timestamp), each with
-    /// whether it came from a Claude sub-agent transcript. Adds up to `session_usage`.
+    /// whether it came from a sub-agent's file. Adds up to `session_usage`.
     pub fn session_calls(&self, agent: Agent, session_id: &str) -> Vec<(&UsageEntry, bool)> {
         self.usage_ownership
             .calls(&self.usage_events, agent, session_id)
@@ -72,7 +76,7 @@ impl AppIndex {
 pub struct UsageOwnership {
     /// Parallel to `usage_events`: index into `sessions`.
     owner: Vec<u32>,
-    /// Parallel to `usage_events`: the event came from a Claude sub-agent transcript.
+    /// Parallel to `usage_events`: the event came from a sub-agent's file.
     subagent: Vec<bool>,
     sessions: Vec<(Agent, String)>,
     session_slots: HashMap<(Agent, String), u32>,
@@ -263,6 +267,10 @@ fn build(
     let history_specs = [
         (Agent::Claude, paths.claude.history.as_path()),
         (Agent::Codex, paths.codex.history.as_path()),
+        (
+            Agent::Antigravity,
+            paths.gemini.antigravity_history.as_path(),
+        ),
     ];
     let mut histories = HashMap::new();
     let mut history_changed = false;
@@ -281,6 +289,7 @@ fn build(
                 match agent {
                     Agent::Claude => parser::parse_history(path),
                     Agent::Codex => codex_parser::parse_history(path),
+                    Agent::Antigravity => antigravity_parser::parse_history(path),
                 }
             }
         };
@@ -364,6 +373,7 @@ fn parse_files_parallel(
             let result = match spec.agent {
                 Agent::Claude => parser::parse_conversation_file(&spec.path),
                 Agent::Codex => codex_parser::parse_rollout_file(&spec.path),
+                Agent::Antigravity => antigravity_parser::parse_file(&spec.path),
             };
             let done = finished.fetch_add(1, Ordering::Relaxed) + 1;
             progress(IndexProgress {
@@ -386,6 +396,7 @@ fn collect_source_files(paths: &DataPaths) -> Vec<FileSpec> {
         Agent::Codex,
         &mut files,
     );
+    collect_antigravity_files(paths, &mut files);
     files.sort_by(|left, right| {
         left.agent
             .cmp(&right.agent)
@@ -423,6 +434,43 @@ fn collect_jsonl_recursive(
     }
 }
 
+/// Antigravity CLI: one transcript per conversation under `brain/`. Gemini CLI: the session
+/// files under each project's `tmp/<dir>/chats/`.
+fn collect_antigravity_files(paths: &DataPaths, files: &mut Vec<FileSpec>) {
+    if let Ok(entries) = fs::read_dir(&paths.gemini.antigravity_brain) {
+        for entry in entries.flatten() {
+            if let Some(path) = antigravity_parser::transcript_for(&entry.path()) {
+                files.push(FileSpec {
+                    agent: Agent::Antigravity,
+                    path,
+                });
+            }
+        }
+    }
+    let Ok(projects) = fs::read_dir(&paths.gemini.gemini_tmp) else {
+        return;
+    };
+    for project in projects.flatten() {
+        let chats = project.path().join("chats");
+        if !chats.is_dir() {
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(&chats)
+            .max_depth(2)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            if path.is_file() && gemini_parser::is_session_file(path, &chats) {
+                files.push(FileSpec {
+                    agent: Agent::Antigravity,
+                    path: path.to_path_buf(),
+                });
+            }
+        }
+    }
+}
+
 // ----------------------------- Assembly -----------------------------
 
 fn assemble_index(
@@ -433,7 +481,8 @@ fn assemble_index(
 ) -> AppIndex {
     let source_files = cache.files.len()
         + usize::from(paths.claude.history.is_file())
-        + usize::from(paths.codex.history.is_file());
+        + usize::from(paths.codex.history.is_file())
+        + usize::from(paths.gemini.antigravity_history.is_file());
     let mut histories: Vec<RawPrompt> = cache
         .histories
         .into_values()
@@ -452,6 +501,7 @@ fn assemble_index(
 
     resolve_missing_claude_projects(&histories, &mut conv);
     associate_codex_history(&mut histories, &conv);
+    resolve_antigravity_projects(paths, &mut histories, &mut conv);
 
     let mut prompts = merge_prompts(histories, &conv);
     let winners = session_winners(paths, &conv);
@@ -481,6 +531,7 @@ fn assemble_index(
     let projects_all = aggregate_projects(&prompts, &sessions, AgentFilter::All);
     let projects_claude = aggregate_projects(&prompts, &sessions, AgentFilter::Claude);
     let projects_codex = aggregate_projects(&prompts, &sessions, AgentFilter::Codex);
+    let projects_antigravity = aggregate_projects(&prompts, &sessions, AgentFilter::Antigravity);
     let extra_claude_versions = collect_claude_session_versions(&paths.claude.sessions);
     let stats_all = compute_stats(
         &prompts,
@@ -506,6 +557,14 @@ fn assemble_index(
         &extra_claude_versions,
         None,
     );
+    let stats_antigravity = compute_stats(
+        &prompts,
+        &sessions,
+        &usage_events,
+        AgentFilter::Antigravity,
+        &extra_claude_versions,
+        None,
+    );
 
     AppIndex {
         prompts,
@@ -518,9 +577,11 @@ fn assemble_index(
         projects_all,
         projects_claude,
         projects_codex,
+        projects_antigravity,
         stats_all,
         stats_claude,
         stats_codex,
+        stats_antigravity,
         source_files,
         built_at: now_ms(),
         from_cache,
@@ -614,6 +675,126 @@ fn associate_codex_history(history: &mut Vec<RawPrompt>, conv: &[ConvFileResult]
             None => true,
         }
     });
+}
+
+/// Antigravity CLI transcripts carry no working directory. Take it from `history.jsonl` by
+/// conversation ID, else from a history line with the same prompt text within the dedup window
+/// (a conversation's first input is logged before it has an ID), else from
+/// `cache/last_conversations.json`; sub-agents inherit their parent's. Gemini CLI sessions in an
+/// old hash-named directory are matched against every known working directory.
+fn resolve_antigravity_projects(
+    paths: &DataPaths,
+    history: &mut [RawPrompt],
+    conv: &mut [ConvFileResult],
+) {
+    let mut by_session: HashMap<String, String> = history
+        .iter()
+        .filter(|prompt| prompt.agent == Agent::Antigravity && !prompt.project.is_empty())
+        .filter_map(|prompt| {
+            prompt
+                .session_id
+                .clone()
+                .map(|session_id| (session_id, prompt.project.clone()))
+        })
+        .collect();
+    let last_conversations: Option<serde_json::Map<String, serde_json::Value>> =
+        fs::read_to_string(&paths.gemini.antigravity_last_conversations)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok());
+    for (workspace, session_id) in last_conversations.into_iter().flatten() {
+        if let Some(session_id) = session_id.as_str() {
+            by_session
+                .entry(session_id.to_string())
+                .or_insert_with(|| antigravity_parser::workspace_path(&workspace));
+        }
+    }
+
+    for result in conv.iter_mut().filter(|result| {
+        result.agent == Agent::Antigravity && result.project.is_none() && !result.is_subagent
+    }) {
+        if let Some(project) = by_session.get(&result.session_id) {
+            result.project = Some(project.clone());
+            continue;
+        }
+        let matched = result.user_prompts.iter().find_map(|prompt| {
+            history.iter().position(|line| {
+                line.agent == Agent::Antigravity
+                    && line.session_id.is_none()
+                    && !line.project.is_empty()
+                    && line.text == prompt.text
+                    && (line.timestamp - prompt.timestamp).abs() <= DEDUP_WINDOW_MS
+            })
+        });
+        if let Some(position) = matched {
+            let line = &mut history[position];
+            line.session_id = Some(result.session_id.clone());
+            result.project = Some(line.project.clone());
+        }
+    }
+
+    let parents: HashMap<String, String> = conv
+        .iter()
+        .filter(|result| result.agent == Agent::Antigravity)
+        .filter_map(|result| {
+            result
+                .project
+                .clone()
+                .map(|project| (result.session_id.clone(), project))
+        })
+        .collect();
+    for result in conv.iter_mut().filter(|result| {
+        result.agent == Agent::Antigravity && result.project.is_none() && result.is_subagent
+    }) {
+        result.project = result
+            .parent_session_id
+            .as_ref()
+            .and_then(|parent| parents.get(parent))
+            .cloned();
+    }
+
+    if conv
+        .iter()
+        .any(|result| result.project.is_none() && result.project_hash.is_some())
+    {
+        let known: HashSet<String> = history
+            .iter()
+            .map(|prompt| prompt.project.clone())
+            .chain(conv.iter().filter_map(|result| result.project.clone()))
+            .filter(|project| !project.is_empty())
+            .collect();
+        let by_hash: HashMap<String, String> = known
+            .into_iter()
+            .map(|project| (gemini_parser::project_hash(&project), project))
+            .collect();
+        for result in conv.iter_mut().filter(|result| result.project.is_none()) {
+            if let Some(project) = result
+                .project_hash
+                .as_ref()
+                .and_then(|hash| by_hash.get(hash))
+            {
+                result.project = Some(project.clone());
+            }
+        }
+    }
+
+    for result in conv
+        .iter_mut()
+        .filter(|result| result.agent == Agent::Antigravity)
+    {
+        let Some(project) = result.project.clone() else {
+            continue;
+        };
+        for prompt in &mut result.user_prompts {
+            if prompt.project.is_empty() {
+                prompt.project = project.clone();
+            }
+        }
+        for usage in &mut result.usage_entries {
+            if usage.project.is_empty() {
+                usage.project = project.clone();
+            }
+        }
+    }
 }
 
 // ----------------------------- Prompts and sessions -----------------------------
@@ -1074,8 +1255,18 @@ impl UsageAggregate {
 }
 
 /// The session that owns a file's usage: Claude sub-agent transcripts live under
-/// `<parent session id>/subagents/`, so their calls roll up into the parent session.
+/// `<parent session id>/subagents/`, and Antigravity / Gemini CLI sub-agent files name their
+/// parent, so their calls roll up into the parent session.
 fn owner_session_id(result: &ConvFileResult) -> String {
+    if result.is_subagent {
+        if let Some(parent) = result
+            .parent_session_id
+            .as_ref()
+            .filter(|parent| !parent.is_empty())
+        {
+            return parent.clone();
+        }
+    }
     if result.agent == Agent::Claude && result.is_subagent {
         let components: Vec<&std::ffi::OsStr> = result
             .path
@@ -1534,6 +1725,8 @@ mod tests {
             source: Some("cli".to_string()),
             models: vec!["claude-sonnet-4-5".to_string()],
             is_subagent,
+            parent_session_id: None,
+            project_hash: None,
             started_at,
             ended_at: started_at + 1_000,
             message_count: keys.len(),

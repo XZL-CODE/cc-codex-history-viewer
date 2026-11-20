@@ -1,4 +1,4 @@
-// 设置弹窗：分别配置 Claude Code 与 Codex 的本地数据目录，维护索引，检查更新。
+// 设置弹窗：分别配置 Claude Code、Codex 与 Antigravity 的本地数据目录，维护索引，检查更新。
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,6 +15,7 @@ import { indexProgressLabel } from "./IndexProgress";
 const EMPTY_FORM: SettingsInput = {
   claudeDataDir: "",
   codexDataDir: "",
+  geminiDataDir: "",
   historyFile: "",
   projectsDir: "",
   sessionsDir: "",
@@ -103,6 +104,7 @@ export function SettingsDialog({
       setForm({
         claudeDataDir: data.claudeDataDir,
         codexDataDir: data.codexDataDir,
+        geminiDataDir: data.geminiDataDir ?? "",
         historyFile: data.historyFile,
         projectsDir: data.projectsDir,
         sessionsDir: data.sessionsDir,
@@ -124,6 +126,7 @@ export function SettingsDialog({
     return (
       form.claudeDataDir !== data.claudeDataDir ||
       form.codexDataDir !== data.codexDataDir ||
+      form.geminiDataDir !== (data.geminiDataDir ?? "") ||
       form.historyFile !== data.historyFile ||
       form.projectsDir !== data.projectsDir ||
       form.sessionsDir !== data.sessionsDir ||
@@ -253,6 +256,18 @@ export function SettingsDialog({
                   value={form.codexDataDir}
                   placeholder={t("codexDataDirPlaceholder")}
                   onChange={setField("codexDataDir")}
+                />
+              </section>
+
+              <section className="space-y-3 rounded-lg border border-border p-3">
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("geminiDataSource")}
+                </h3>
+                <FormField
+                  label={t("geminiDataDirLabel")}
+                  value={form.geminiDataDir}
+                  placeholder={t("geminiDataDirPlaceholder")}
+                  onChange={setField("geminiDataDir")}
                 />
               </section>
 
@@ -396,6 +411,26 @@ export function SettingsDialog({
                       label={t("archivedSessionsDirShort")}
                       path={data.resolved.codex.archivedSessions}
                       exists={data.resolved.codex.archivedSessionsExists}
+                    />
+                  </div>
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="text-[11px] font-semibold text-muted">
+                      {t("geminiDataSource")}
+                    </div>
+                    <ResolvedRow
+                      label={t("rootDirShort")}
+                      path={data.resolved.gemini.root}
+                      exists={data.resolved.gemini.rootExists}
+                    />
+                    <ResolvedRow
+                      label={t("antigravityConversationsShort")}
+                      path={data.resolved.gemini.antigravityConversations}
+                      exists={data.resolved.gemini.antigravityConversationsExists}
+                    />
+                    <ResolvedRow
+                      label={t("geminiCliSessionsShort")}
+                      path={data.resolved.gemini.geminiCliSessions}
+                      exists={data.resolved.gemini.geminiCliSessionsExists}
                     />
                   </div>
                 </div>

@@ -25,6 +25,8 @@ dirs = "5"
 walkdir = "2"
 chrono = { version = "0.4", features = ["clock"] }
 rayon = "1"
+# Gemini CLI 旧版按项目路径的 SHA-256 命名会话目录
+sha2 = "0.10"
 # 导入 zip 包：只需 deflate（zip -r 与 Finder 压缩的默认算法）
 zip = { version = "2", default-features = false, features = ["deflate"] }
 

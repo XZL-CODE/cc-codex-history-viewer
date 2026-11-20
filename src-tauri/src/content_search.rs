@@ -3,14 +3,14 @@
 //! 覆盖用户消息、助手回复、思考摘要与工具调用参数；工具结果正文（文件内容、命令输出）
 //! 不参与匹配。每行先用大小写不敏感的字节子串做预筛，只有命中的行才解析 JSON。
 
-use crate::codex_parser;
 use crate::indexer::{self, AppIndex};
 use crate::models::{Agent, AgentFilter, ConversationHit, ConversationSearchResponse};
 use crate::parser;
+use crate::{antigravity_parser, codex_parser, gemini_parser};
 use rayon::prelude::*;
 use serde_json::Value;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 pub const DEFAULT_LIMIT: usize = 300;
@@ -146,7 +146,7 @@ fn scan_file(target: &SearchTarget, query: &Query) -> (Vec<ConversationHit>, boo
     let mut capped = false;
     // Codex writes some assistant messages twice (event + response item); keep the first copy.
     let mut seen: HashSet<u64> = HashSet::new();
-    let _ = parser::for_each_jsonl_line_while(&target.path, |_, line| {
+    let mut scan_line = |line: &str| {
         if line.is_empty()
             || !query
                 .prefilter
@@ -162,6 +162,7 @@ fn scan_file(target: &SearchTarget, query: &Query) -> (Vec<ConversationHit>, boo
         let candidates = match target.agent {
             Agent::Claude => claude_candidates(&value),
             Agent::Codex => codex_candidates(&value),
+            Agent::Antigravity => antigravity_candidates(&value, &target.path),
         };
         for candidate in candidates {
             if !seen.insert(parser::stable_hash(&[candidate.kind, &candidate.text])) {
@@ -176,7 +177,15 @@ fn scan_file(target: &SearchTarget, query: &Query) -> (Vec<ConversationHit>, boo
             }
         }
         true
-    });
+    };
+    if target.path.extension().is_some_and(|ext| ext == "json") {
+        // An older Gemini CLI session is one pretty-printed JSON document, not JSONL.
+        if let Ok(text) = std::fs::read_to_string(&target.path) {
+            scan_line(&text);
+        }
+    } else {
+        let _ = parser::for_each_jsonl_line_while(&target.path, |_, line| scan_line(line));
+    }
     (hits, capped)
 }
 
@@ -343,6 +352,154 @@ fn claude_candidates(value: &Value) -> Vec<Candidate> {
                     }
                     _ => {}
                 }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+// ----------------------------- Antigravity -----------------------------
+
+fn antigravity_candidates(value: &Value, path: &Path) -> Vec<Candidate> {
+    if antigravity_parser::is_transcript(path) {
+        transcript_candidates(value)
+    } else {
+        gemini_candidates(value)
+    }
+}
+
+/// One Antigravity CLI step. IDs match the detail view's `step-<index>`.
+fn transcript_candidates(value: &Value) -> Vec<Candidate> {
+    let Some(index) = value.get("step_index").and_then(Value::as_i64) else {
+        return Vec::new();
+    };
+    let uuid = format!("step-{index}");
+    let timestamp = value
+        .get("created_at")
+        .and_then(Value::as_str)
+        .and_then(parser::iso_to_ms)
+        .unwrap_or(0);
+    let make =
+        |role: &'static str, kind: &'static str, tool_name: Option<String>, text| Candidate {
+            role,
+            kind,
+            uuid: uuid.clone(),
+            timestamp,
+            tool_name,
+            text,
+        };
+    let mut out = Vec::new();
+    match value.get("type").and_then(Value::as_str).unwrap_or("") {
+        "USER_INPUT" => {
+            if let Some(text) = value
+                .get("content")
+                .and_then(Value::as_str)
+                .and_then(antigravity_parser::user_request_text)
+            {
+                out.push(make("user", "text", None, text));
+            }
+        }
+        "PLANNER_RESPONSE" => {
+            if let Some(text) = text_of(value.get("content")) {
+                out.push(make("assistant", "text", None, text));
+            }
+            if let Some(text) = text_of(value.get("thinking")) {
+                out.push(make("assistant", "thinking", None, text));
+            }
+            for call in value
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let name = text_of(call.get("name")).unwrap_or_else(|| "tool".to_string());
+                let args = call
+                    .get("args")
+                    .map(|args| serde_json::to_string(args).unwrap_or_default())
+                    .unwrap_or_default();
+                out.push(make(
+                    "assistant",
+                    "tool_use",
+                    Some(name.clone()),
+                    format!("{name} {args}"),
+                ));
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Gemini CLI messages: a message line, a `$set` replacing every message, or the session
+/// header (a whole older `.json` session carries its messages there).
+fn gemini_candidates(value: &Value) -> Vec<Candidate> {
+    if value.get("id").and_then(Value::as_str).is_some() {
+        return gemini_message_candidates(value);
+    }
+    let messages = value
+        .get("$set")
+        .and_then(|set| set.get("messages"))
+        .or_else(|| value.get("messages"))
+        .and_then(Value::as_array);
+    messages
+        .into_iter()
+        .flatten()
+        .flat_map(gemini_message_candidates)
+        .collect()
+}
+
+fn gemini_message_candidates(message: &Value) -> Vec<Candidate> {
+    let Some(uuid) = text_of(message.get("id")) else {
+        return Vec::new();
+    };
+    let timestamp = message
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .and_then(parser::iso_to_ms)
+        .unwrap_or(0);
+    let make =
+        |role: &'static str, kind: &'static str, tool_name: Option<String>, text| Candidate {
+            role,
+            kind,
+            uuid: uuid.clone(),
+            timestamp,
+            tool_name,
+            text,
+        };
+    let mut out = Vec::new();
+    match message.get("type").and_then(Value::as_str).unwrap_or("") {
+        "user" => {
+            if let Some(text) = gemini_parser::user_text(message) {
+                out.push(make("user", "text", None, text));
+            }
+        }
+        "gemini" => {
+            let text = gemini_parser::parts_text(message.get("content"));
+            if !text.trim().is_empty() {
+                out.push(make("assistant", "text", None, text));
+            }
+            let thoughts = gemini_parser::thoughts_text(message);
+            if !thoughts.is_empty() {
+                out.push(make("assistant", "thinking", None, thoughts));
+            }
+            for call in message
+                .get("toolCalls")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let name = text_of(call.get("name")).unwrap_or_else(|| "tool".to_string());
+                let args = call
+                    .get("args")
+                    .map(|args| serde_json::to_string(args).unwrap_or_default())
+                    .unwrap_or_default();
+                out.push(make(
+                    "assistant",
+                    "tool_use",
+                    Some(name.clone()),
+                    format!("{name} {args}"),
+                ));
             }
         }
         _ => {}

@@ -90,7 +90,7 @@ export function Sidebar() {
             onChange={setSidebarAgentFilter}
             compact
             ariaLabel={t("sidebarAgentSource")}
-            className="w-full [&>button]:flex-1 [&>button]:px-2"
+            className="grid w-full grid-cols-2 gap-0.5 [&>button]:px-2"
           />
         </div>
 

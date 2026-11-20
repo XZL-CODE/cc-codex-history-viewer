@@ -1,0 +1,28 @@
+{
+  "sessionId": "77777777-7777-4777-8777-777777777777",
+  "projectHash": "ddeba8bc8f00b6d04350e4ff61ec450fb8b9bc9dc3c33c045c71ff180a179299",
+  "startTime": "2025-10-01T09:00:00.000Z",
+  "lastUpdated": "2025-10-01T09:01:00.000Z",
+  "messages": [
+    {
+      "id": "m1",
+      "timestamp": "2025-10-01T09:00:00.000Z",
+      "type": "user",
+      "content": "An older single-file session"
+    },
+    {
+      "id": "m2",
+      "timestamp": "2025-10-01T09:01:00.000Z",
+      "type": "gemini",
+      "content": "Legacy answer",
+      "tokens": {
+        "input": 500,
+        "output": 50,
+        "cached": 100,
+        "thoughts": 10,
+        "total": 560
+      },
+      "model": "gemini-2.5-pro"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
 use crate::state::{self, load_settings, resolve_data_paths, resolve_from_settings, AppState};
-use crate::{codex_parser, external, import, parser, persisted, usage_detail};
+use crate::{antigravity_parser, codex_parser, external, import, parser, persisted, usage_detail};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::cmp::Reverse;
@@ -376,6 +376,7 @@ fn parse_detail_sync(
     let mut detail = match agent {
         Agent::Claude => parser::parse_conversation_detail_with_limit(file, block_limit),
         Agent::Codex => codex_parser::parse_rollout_detail_with_limit(file, block_limit),
+        Agent::Antigravity => antigravity_parser::parse_detail_with_limit(file, block_limit),
     }?;
     if agent == Agent::Claude {
         resolve_persisted_outputs(&mut detail, projects_dir, file, block_limit.is_none());
@@ -508,6 +509,7 @@ fn settings_view(s: &SettingsInput, config_path: &Path) -> Result<SettingsView, 
     Ok(SettingsView {
         claude_data_dir: s.claude_data_dir.clone(),
         codex_data_dir: s.codex_data_dir.clone(),
+        gemini_data_dir: s.gemini_data_dir.clone(),
         history_file: s.history_file.clone(),
         projects_dir: s.projects_dir.clone(),
         sessions_dir: s.sessions_dir.clone(),
@@ -531,6 +533,18 @@ fn settings_view(s: &SettingsInput, config_path: &Path) -> Result<SettingsView, 
                 history_exists: paths.codex.history.is_file(),
                 sessions_exists: paths.codex.sessions.is_dir(),
                 archived_sessions_exists: paths.codex.archived_sessions.is_dir(),
+            },
+            gemini: ResolvedGeminiPaths {
+                root: paths.gemini.root.to_string_lossy().to_string(),
+                antigravity_conversations: paths
+                    .gemini
+                    .antigravity_brain
+                    .to_string_lossy()
+                    .to_string(),
+                gemini_cli_sessions: paths.gemini.gemini_tmp.to_string_lossy().to_string(),
+                root_exists: paths.gemini.root.is_dir(),
+                antigravity_conversations_exists: paths.gemini.antigravity_brain.is_dir(),
+                gemini_cli_sessions_exists: paths.gemini.gemini_tmp.is_dir(),
             },
         },
     })

@@ -306,17 +306,17 @@ export function TokenStats({
     ? `${((usage.cacheRead / cacheableInput) * 100).toFixed(1)}%`
     : "—";
   const costLabel =
-    agentFilter === "codex"
-      ? t("apiEquivalentCost")
-      : agentFilter === "all"
-        ? t("knownPriceCost")
-        : t("estTotalCost");
-  const costNote =
-    agentFilter === "codex"
-      ? t("costNoteCodex")
-      : agentFilter === "all"
-        ? t("costNoteAll")
-        : t("costNoteClaude");
+    agentFilter === "all"
+      ? t("knownPriceCost")
+      : agentFilter === "claude"
+        ? t("estTotalCost")
+        : t("apiEquivalentCost");
+  const costNote = {
+    all: t("costNoteAll"),
+    claude: t("costNoteClaude"),
+    codex: t("costNoteCodex"),
+    antigravity: t("costNoteAntigravity"),
+  }[agentFilter];
 
   return (
     <section className="min-w-0 space-y-3">
