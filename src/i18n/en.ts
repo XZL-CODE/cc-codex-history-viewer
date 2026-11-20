@@ -31,6 +31,8 @@ export const en: Record<keyof typeof zh, string> = {
   agentFilterLabel: "Coding Agent data scope",
   overviewAgentSource: "Overview source",
   sidebarAgentSource: "Folder source",
+  sidebarResizeLabel: "Resize sidebar",
+  sidebarResizeTitle: "Drag to resize the sidebar; double-click to reset",
   searchAgentSource: "Search source",
   projectAgentSource: "Content source",
   exportAgentSource: "Export source",

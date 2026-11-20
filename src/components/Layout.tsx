@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore } from "@/store";
+import { sidebarWidthValue, useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useLang, useT } from "@/i18n";
 import { cn, decodePath, isMac, modKeyLabel, pathBasename } from "@/lib/utils";
 import { SEARCH_PATH } from "@/lib/search";
@@ -21,6 +22,7 @@ import { IndexProgressBar, indexProgressLabel } from "./IndexProgress";
 import { GLOBAL_SEARCH_INPUT_ID, SearchBar } from "./SearchBar";
 import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
+import { SidebarResizer } from "./SidebarResizer";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui";
 
@@ -131,12 +133,22 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [refreshIndex, openSettings, closeSettings, settingsOpen]);
 
+  const sidebar = useSidebarWidth();
+  // 拖动过的宽度写进 CSS 变量，顶栏左列与侧栏共用；没调过时用下面网格里的默认宽度
+  const shellStyle =
+    sidebar.width === null
+      ? undefined
+      : ({ "--sidebar-width": sidebarWidthValue(sidebar.width) } as CSSProperties);
+
   const busy = refreshing || indexProgress !== null;
   const shortcut = (key: string) => `${modKeyLabel}${isMac ? "" : "+"}${key}`;
 
   return (
-    <div className="grid h-screen min-w-0 grid-rows-[56px_minmax(0,1fr)]">
-      <header className="grid min-w-0 grid-cols-[264px_minmax(0,1fr)] border-b border-border bg-surface max-[1220px]:grid-cols-[248px_minmax(0,1fr)]">
+    <div
+      className="grid h-screen min-w-0 grid-rows-[56px_minmax(0,1fr)]"
+      style={shellStyle}
+    >
+      <header className="grid min-w-0 grid-cols-[var(--sidebar-width,264px)_minmax(0,1fr)] border-b border-border bg-surface max-[1220px]:grid-cols-[var(--sidebar-width,248px)_minmax(0,1fr)]">
         <button
           type="button"
           onClick={() => {
@@ -234,8 +246,11 @@ export function Layout() {
       <ImportDialog open={importOpen} onClose={closeImport} />
       <UpdateDialog />
 
-      <div className="grid min-h-0 min-w-0 grid-cols-[264px_minmax(0,1fr)] max-[1220px]:grid-cols-[248px_minmax(0,1fr)]">
-        <Sidebar />
+      <div className="grid min-h-0 min-w-0 grid-cols-[var(--sidebar-width,264px)_minmax(0,1fr)] max-[1220px]:grid-cols-[var(--sidebar-width,248px)_minmax(0,1fr)]">
+        <div className="relative grid min-h-0 min-w-0">
+          <Sidebar />
+          <SidebarResizer onResize={sidebar.resize} onReset={sidebar.reset} />
+        </div>
         <div className="relative min-h-0 min-w-0">
           <IndexProgressBar />
           <main className="h-full min-h-0 min-w-0 overflow-y-auto bg-background">

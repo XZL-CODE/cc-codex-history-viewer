@@ -31,7 +31,7 @@ Coding Agent History Viewer is a Tauri desktop application that scans Claude Cod
 - Preserve the Claude Code, Codex or Antigravity identity on prompts, sessions, and exports.
 - Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
 - Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache. The index builds on a background thread with live progress; refresh re-parses only changed files, and a full rebuild lives in Settings.
-- Search is its own route so the back button returns to results; window position and size are remembered; the theme can follow the system.
+- Search is its own route so the back button returns to results; window position and size are remembered; drag the sidebar's right edge to widen it (220–520 px, remembered; double-click resets), and from about 330 px the four source filters fit on one row; the theme can follow the system.
 - **In-app updates**: checks GitHub for a newer version at startup and while the app is open (at most once an hour; can be turned off in Settings) and shows it in the toolbar; "Update now" downloads it, verifies its signature, installs it and reopens the app. See [In-app updates](#in-app-updates).
 - Continue working when either product's data directory is absent.
 

@@ -32,6 +32,8 @@ export const zh = {
   agentFilterLabel: "Coding Agent 数据范围",
   overviewAgentSource: "概览来源",
   sidebarAgentSource: "文件夹来源",
+  sidebarResizeLabel: "调整侧栏宽度",
+  sidebarResizeTitle: "拖动调整侧栏宽度，双击恢复默认",
   searchAgentSource: "搜索来源",
   projectAgentSource: "内容来源",
   exportAgentSource: "导出来源",

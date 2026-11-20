@@ -121,6 +121,12 @@ select {
   letter-spacing: 0;
 }
 
+/* 拖动侧栏宽度时：全局显示列宽光标，不选中文字 */
+body.sidebar-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .page-content {
   width: min(1040px, calc(100% - 48px));
   margin-inline: auto;
