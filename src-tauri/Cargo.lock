@@ -431,13 +431,14 @@ dependencies = [
 
 [[package]]
 name = "cc-history-viewer"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

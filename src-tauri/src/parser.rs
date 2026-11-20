@@ -67,6 +67,14 @@ pub struct ConvFileResult {
     pub models: Vec<String>,
     /// Sub-agent prompts/sessions are hidden by default; usage remains included.
     pub is_subagent: bool,
+    /// Session a sub-agent's calls roll up into, when the file says so itself (Antigravity and
+    /// Gemini CLI). Claude derives it from the `<parent>/subagents/` path instead.
+    #[serde(default)]
+    pub parent_session_id: Option<String>,
+    /// Gemini CLI `projectHash` (SHA-256 of the project path), kept only while `project` is
+    /// unknown so the index can match it against known working directories.
+    #[serde(default)]
+    pub project_hash: Option<String>,
     pub started_at: i64,
     pub ended_at: i64,
     pub message_count: usize,
@@ -441,6 +449,8 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
             models
         },
         is_subagent: file_is_subagent,
+        parent_session_id: None,
+        project_hash: None,
         started_at,
         ended_at,
         message_count,

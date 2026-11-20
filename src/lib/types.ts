@@ -1,6 +1,7 @@
 // 与 Rust src-tauri/src/models.rs 一一对应的类型定义。
 
-export type Agent = "claude" | "codex";
+/** antigravity = Antigravity CLI 与它接替的 Gemini CLI，两者都存在 ~/.gemini 下 */
+export type Agent = "claude" | "codex" | "antigravity";
 export type AgentFilter = Agent | "all";
 export type PromptOrigin = "history" | "conversation" | "both";
 
@@ -519,6 +520,8 @@ export interface ExternalImportResult {
 export interface SettingsInput {
   claudeDataDir: string;
   codexDataDir: string;
+  /** Antigravity CLI 与 Gemini CLI 共用的根目录，留空为 ~/.gemini */
+  geminiDataDir: string;
   historyFile: string;
   projectsDir: string;
   sessionsDir: string;
@@ -546,9 +549,21 @@ export interface ResolvedCodexPaths {
   archivedSessionsExists: boolean;
 }
 
+export interface ResolvedGeminiPaths {
+  root: string;
+  /** antigravity-cli/brain：每个 Antigravity CLI 会话一个目录 */
+  antigravityConversations: string;
+  /** tmp：每个项目一个目录，Gemini CLI 会话在其 chats/ 下 */
+  geminiCliSessions: string;
+  rootExists: boolean;
+  antigravityConversationsExists: boolean;
+  geminiCliSessionsExists: boolean;
+}
+
 export interface ResolvedPaths {
   claude: ResolvedClaudePaths;
   codex: ResolvedCodexPaths;
+  gemini: ResolvedGeminiPaths;
 }
 
 export interface SettingsView extends SettingsInput {

@@ -3,7 +3,14 @@ import { twMerge } from "tailwind-merge";
 import { format, formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { getCurrentLang, translate } from "@/i18n";
-import type { CallTokenFields, TokenUsageFields } from "./types";
+import type { Agent, CallTokenFields, TokenUsageFields } from "./types";
+
+/** 全部来源，也是筛选按钮的顺序 */
+export const AGENTS: readonly Agent[] = ["claude", "codex", "antigravity"];
+
+export function isAgent(value: unknown): value is Agent {
+  return AGENTS.includes(value as Agent);
+}
 
 /** 合并 Tailwind 类名 */
 export function cn(...inputs: ClassValue[]) {

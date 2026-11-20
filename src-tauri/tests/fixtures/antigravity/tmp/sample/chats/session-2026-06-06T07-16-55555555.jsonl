@@ -1,0 +1,11 @@
+{"sessionId": "55555555-5555-4555-8555-555555555555", "projectHash": "0000000000000000000000000000000000000000000000000000000000000000", "startTime": "2026-06-06T07:16:55.243Z", "lastUpdated": "2026-06-06T07:16:55.243Z", "kind": "main"}
+{"$set": {"messages": [{"id": "ctx", "timestamp": "2026-06-06T07:16:55.243Z", "type": "user", "content": [{"text": "<session_context>\nThis is the Gemini CLI.\n</session_context>"}]}], "lastUpdated": "2026-06-06T07:16:55.243Z"}}
+{"id": "u1", "timestamp": "2026-06-06T07:17:01.576Z", "type": "user", "content": [{"text": "Explain --approval-mode"}]}
+{"id": "g1", "timestamp": "2026-06-06T07:17:17.650Z", "type": "gemini", "content": "It controls tool approval.", "thoughts": [{"subject": "Reading flags", "description": "Checking the CLI help.", "timestamp": "2026-06-06T07:17:06.014Z"}], "tokens": {"input": 18979, "output": 522, "cached": 4000, "thoughts": 556, "tool": 10, "total": 20067}, "model": "gemini-3.1-pro-preview"}
+{"id": "u2", "timestamp": "2026-06-06T07:18:00.000Z", "type": "user", "content": [{"text": "a prompt that gets rewound"}]}
+{"$rewindTo": "u2"}
+{"id": "u3", "timestamp": "2026-06-06T07:19:00.000Z", "type": "user", "content": [{"text": "List the files"}]}
+{"id": "g2", "timestamp": "2026-06-06T07:19:05.000Z", "type": "gemini", "content": "", "toolCalls": [{"id": "call-1", "name": "list_directory", "args": {"dir_path": "."}, "status": "executing", "timestamp": "2026-06-06T07:19:05.000Z"}, {"id": "call-2", "name": "invoke_agent", "args": {"agent_name": "researcher"}, "status": "success", "agentId": "66666666-6666-4666-8666-666666666666", "timestamp": "2026-06-06T07:19:05.000Z"}], "tokens": {"input": 20000, "output": 40, "cached": 18000, "thoughts": 0, "tool": 0, "total": 20040}, "model": "gemini-3-flash-preview"}
+{"$patch": {"id": "g2", "toolCalls": [{"id": "call-1", "result": [{"functionResponse": {"id": "call-1", "name": "list_directory", "response": {"output": "a.txt\nb.txt"}}}]}]}}
+{"id": "i1", "timestamp": "2026-06-06T07:19:06.000Z", "type": "info", "content": "Gemini CLI update available!"}
+{"$set": {"lastUpdated": "2026-06-06T07:19:06.000Z", "summary": "Approval mode and files"}}

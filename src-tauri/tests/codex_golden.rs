@@ -3,7 +3,7 @@
 use cc_history_viewer_lib::codex_parser;
 use cc_history_viewer_lib::indexer;
 use cc_history_viewer_lib::models::{Agent, AgentFilter, PromptOrigin};
-use cc_history_viewer_lib::state::{ClaudeDataPaths, CodexDataPaths, DataPaths};
+use cc_history_viewer_lib::state::{ClaudeDataPaths, CodexDataPaths, DataPaths, GeminiDataPaths};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,6 +31,7 @@ fn codex_only_paths() -> DataPaths {
             archived_sessions: codex_root.join("archived_sessions"),
             root: codex_root,
         },
+        gemini: GeminiDataPaths::under(PathBuf::from("/synthetic/nonexistent-gemini")),
     }
 }
 

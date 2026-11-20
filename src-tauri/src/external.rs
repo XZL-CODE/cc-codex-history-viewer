@@ -54,17 +54,19 @@ const RESULTLESS_TOOLS: [&str; 2] = ["web_search", "image_generation"];
 /// 标题只取一行，长度兜底；前端再做纯文本摘要与截短。
 const TITLE_MAX_CHARS: usize = 300;
 /// 消息标题里的说话人：(文案, role, 助手消息的产品)。
-const SPEAKERS: [(&str, &str, Option<Agent>); 4] = [
+const SPEAKERS: [(&str, &str, Option<Agent>); 5] = [
     ("🧑 用户", "user", None),
     ("🧑 User", "user", None),
     ("🤖 Claude", "assistant", Some(Agent::Claude)),
     ("🤖 Codex", "assistant", Some(Agent::Codex)),
+    ("🤖 Antigravity", "assistant", Some(Agent::Antigravity)),
 ];
 
 const ERR_NOT_EXPORT: &str = "不是本应用导出的单会话 Markdown（缺少「# 对话导出」标题）。";
 const ERR_BATCH_EXPORT: &str = "这是批量导出的 Markdown（会话导出），目前只支持单会话导出的文件。";
 const ERR_PROMPT_EXPORT: &str = "这是 Prompt 或搜索结果导出，不包含完整对话。";
-const ERR_UNKNOWN_AGENT: &str = "无法识别导出文件的产品（Claude Code / OpenAI Codex）。";
+const ERR_UNKNOWN_AGENT: &str =
+    "无法识别导出文件的产品（Claude Code / OpenAI Codex / Antigravity）。";
 const ERR_NOT_FOUND: &str = "外部会话不存在或已被删除。";
 const ERR_INVALID_ID: &str = "外部会话 ID 无效。";
 
@@ -272,9 +274,12 @@ fn agent_from_label(value: &str) -> Option<Agent> {
     match value {
         "Claude Code" => Some(Agent::Claude),
         "OpenAI Codex" => Some(Agent::Codex),
+        "Antigravity" => Some(Agent::Antigravity),
         _ => {
             let lower = value.to_ascii_lowercase();
-            if lower.contains("codex") {
+            if lower.contains("antigravity") || lower.contains("gemini") {
+                Some(Agent::Antigravity)
+            } else if lower.contains("codex") {
                 Some(Agent::Codex)
             } else if lower.contains("claude") {
                 Some(Agent::Claude)
@@ -1360,7 +1365,7 @@ mod tests {
     fn sample(agent: Agent) -> ConversationDetail {
         let result_role = match agent {
             Agent::Claude => "user",
-            Agent::Codex => "assistant",
+            Agent::Codex | Agent::Antigravity => "assistant",
         };
         let mut persisted = truncated(block(
             "tool_result",
@@ -1564,7 +1569,7 @@ mod tests {
 
     #[test]
     fn round_trips_detailed_and_brief_exports_in_both_languages() {
-        for agent in [Agent::Claude, Agent::Codex] {
+        for agent in [Agent::Claude, Agent::Codex, Agent::Antigravity] {
             let original = sample(agent);
             for lang in [Lang::Zh, Lang::En] {
                 for include_tools in [true, false] {
@@ -1602,7 +1607,7 @@ mod tests {
 
     #[test]
     fn dialogue_only_of_detailed_matches_brief() {
-        for agent in [Agent::Claude, Agent::Codex] {
+        for agent in [Agent::Claude, Agent::Codex, Agent::Antigravity] {
             let original = sample(agent);
             for lang in [Lang::Zh, Lang::En] {
                 let context = format!("{agent:?} {lang:?}");

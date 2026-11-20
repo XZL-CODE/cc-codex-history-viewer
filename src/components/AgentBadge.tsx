@@ -1,8 +1,24 @@
 import { Layers3 } from "lucide-react";
 import type { Agent, AgentFilter } from "@/lib/types";
-import { useT } from "@/i18n";
-import { cn } from "@/lib/utils";
+import { useT, type DictKey } from "@/i18n";
+import { AGENTS, cn } from "@/lib/utils";
 import { Badge } from "./ui";
+
+const AGENT_LABEL: Record<Agent, DictKey> = {
+  claude: "agentClaude",
+  codex: "agentCodex",
+  antigravity: "agentAntigravity",
+};
+const AGENT_TONE = {
+  claude: "warning",
+  codex: "success",
+  antigravity: "info",
+} as const satisfies Record<Agent, string>;
+const AGENT_DOT: Record<Agent, string> = {
+  claude: "bg-warning",
+  codex: "bg-success",
+  antigravity: "bg-info",
+};
 
 export function AgentBadge({
   agent,
@@ -13,18 +29,14 @@ export function AgentBadge({
 }) {
   const t = useT();
   return (
-    <Badge
-      tone={agent === "claude" ? "warning" : "success"}
-      className={className}
-      data-agent-badge={agent}
-    >
+    <Badge tone={AGENT_TONE[agent]} className={className} data-agent-badge={agent}>
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
-      {agent === "claude" ? t("agentClaude") : t("agentCodex")}
+      {t(AGENT_LABEL[agent])}
     </Badge>
   );
 }
 
-const OPTIONS: AgentFilter[] = ["claude", "codex", "all"];
+const OPTIONS: AgentFilter[] = [...AGENTS, "all"];
 
 export function AgentFilterControl({
   value,
@@ -51,12 +63,7 @@ export function AgentFilterControl({
       data-agent-filter={ariaLabel ?? t("agentFilterLabel")}
     >
       {OPTIONS.map((option) => {
-        const fullLabel =
-          option === "all"
-            ? t("agentAll")
-            : option === "claude"
-              ? t("agentClaude")
-              : t("agentCodex");
+        const fullLabel = option === "all" ? t("agentAll") : t(AGENT_LABEL[option]);
         const label =
           compact && option === "claude" ? t("agentClaudeShort") : fullLabel;
 
@@ -78,10 +85,7 @@ export function AgentFilterControl({
               <Layers3 size={13} aria-hidden />
             ) : (
               <span
-                className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
-                  option === "claude" ? "bg-warning" : "bg-success"
-                )}
+                className={cn("h-1.5 w-1.5 shrink-0 rounded-full", AGENT_DOT[option])}
                 aria-hidden
               />
             )}

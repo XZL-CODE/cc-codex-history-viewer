@@ -1,6 +1,6 @@
 # Agent Note: 用量明细显示推理档位
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -28,20 +28,23 @@ Status: proposed
 
 ## 与已有决定的关系
 
-[对话详情的 Token 用量明细](../implemented/2026-09-28-conversation-usage-breakdown.md)
+[对话详情的 Token 用量明细](./2026-09-28-conversation-usage-breakdown.md)
 的 Proposal 写明「按模型表只在多模型会话出现」。按档位分行后，单模型但用了多个档位的会话
-也会出现这张表，与该条字面不符，已在该条标待裁定。用户裁定：按模型表行数大于 1 即显示，
-不论是多模型还是多档位。本 Note 进 `implemented/` 时，该条改标已取代。
+也会出现这张表。用户裁定：按模型表行数大于 1 即显示，不论是多模型还是多档位；该条已标已取代。
+
+## Decision
+
+已按 Proposal 落实，随 v0.14.0 发布。Antigravity 来源的记录没有档位字段，档位只体现在模型名后缀，按本 Note 的
+原值规则显示「未记录」，见 [第三个来源 Antigravity](../proposed/2026-11-20-antigravity-source.md)。
 
 ## Risks
 
 - `effort` 与 `perTurnEffort` 何时取值不同尚未见到实例：从菜单切换档位时两者同时变化。
-- Codex `turn_context.effort` 的位置依据对 rollout 格式的了解与合成 fixture，尚未用真实
-  rollout 核对。
 
 ## Verification
 
 合成 fixture 锁定：Claude 优先 `perTurnEffort`、退回 `effort`、形状不符只丢档位不丢整行，
 详情与索引取值一致；Codex 档位随 `turn_context` 逐轮更新且不跨轮继承；按模型表按
 （模型，档位）分行，模型按总量排序、同一模型的行按档位从低到高相邻，行之和等于调用之和。
-Claude Code 2.1.328 的真实记录中确认了两个字段的位置与切换档位后的取值。
+Claude Code 2.1.328 的真实记录中确认了两个字段的位置与切换档位后的取值；Codex CLI
+0.169.0-alpha 的真实会话在应用里读出档位 `max` 并显示在输出卡片。

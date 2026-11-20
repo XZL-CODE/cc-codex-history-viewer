@@ -468,7 +468,7 @@ export function UsagePanel({
             />
             <StatCard
               icon={<CircleDollarSign size={13} />}
-              label={agent === "codex" ? t("apiEquivalentCost") : t("estTotalCost")}
+              label={agent === "claude" ? t("estTotalCost") : t("apiEquivalentCost")}
               value={formatUsageCost(usage)}
               sub={
                 <>
@@ -623,7 +623,13 @@ export function UsagePanel({
           )}
 
           <div className="space-y-0.5 text-[11px] text-muted">
-            <p>{agent === "codex" ? t("costNoteCodex") : t("costNoteClaude")}</p>
+            <p>
+              {agent === "claude"
+                ? t("costNoteClaude")
+                : agent === "codex"
+                  ? t("costNoteCodex")
+                  : t("costNoteAntigravity")}
+            </p>
             {usage.unknownModelTokens > 0 && (
               <p className="text-warning">
                 {t("unknownModelNote", { value: formatTokens(usage.unknownModelTokens) })}

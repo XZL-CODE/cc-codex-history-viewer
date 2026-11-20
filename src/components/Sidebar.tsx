@@ -81,7 +81,8 @@ export function Sidebar() {
       </nav>
 
       <div className="grid shrink-0 gap-2.5 px-2.5 pb-2.5">
-        <div className="grid gap-1.5">
+        {/* 侧栏拖宽到放得下时，四个来源排成一行；默认宽度下两行 */}
+        <div className="@container grid gap-1.5">
           <span className="px-0.5 text-[11px] font-medium text-muted">
             {t("sidebarAgentSource")}
           </span>
@@ -90,7 +91,7 @@ export function Sidebar() {
             onChange={setSidebarAgentFilter}
             compact
             ariaLabel={t("sidebarAgentSource")}
-            className="w-full [&>button]:flex-1 [&>button]:px-2"
+            className="grid w-full grid-cols-2 gap-0.5 @min-[300px]:flex [&>button]:px-2 @min-[300px]:[&>button]:flex-auto"
           />
         </div>
 

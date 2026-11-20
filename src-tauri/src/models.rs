@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub enum Agent {
     Claude,
     Codex,
+    /// Antigravity CLI and its predecessor Gemini CLI, both stored under `~/.gemini`.
+    Antigravity,
 }
 
 impl Agent {
@@ -14,6 +16,7 @@ impl Agent {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::Antigravity => "antigravity",
         }
     }
 }
@@ -23,6 +26,7 @@ impl Agent {
 pub enum AgentFilter {
     Claude,
     Codex,
+    Antigravity,
     #[default]
     All,
 }
@@ -32,7 +36,9 @@ impl AgentFilter {
         matches!(self, Self::All)
             || matches!(
                 (self, agent),
-                (Self::Claude, Agent::Claude) | (Self::Codex, Agent::Codex)
+                (Self::Claude, Agent::Claude)
+                    | (Self::Codex, Agent::Codex)
+                    | (Self::Antigravity, Agent::Antigravity)
             )
     }
 }
@@ -153,7 +159,8 @@ pub struct SessionSummary {
     pub message_count: usize,
     pub git_branch: Option<String>,
     pub cli_version: Option<String>,
-    /// Codex session_meta.source (or `cli` for Claude data).
+    /// Codex session_meta.source (or `cli` for Claude data); for Antigravity, which CLI wrote
+    /// the session (`antigravity-cli` or `gemini-cli`).
     pub source: Option<String>,
     pub models: Vec<String>,
     #[serde(default)]
@@ -603,6 +610,8 @@ pub struct ExternalImportResult {
 pub struct SettingsInput {
     pub claude_data_dir: String,
     pub codex_data_dir: String,
+    /// Root shared by Antigravity CLI and Gemini CLI; empty means `~/.gemini`.
+    pub gemini_data_dir: String,
     /// Legacy-compatible optional Claude path overrides.
     pub history_file: String,
     pub projects_dir: String,
@@ -617,6 +626,8 @@ pub struct SettingsInput {
 pub struct SettingsView {
     pub claude_data_dir: String,
     pub codex_data_dir: String,
+    #[serde(default)]
+    pub gemini_data_dir: String,
     pub history_file: String,
     pub projects_dir: String,
     pub sessions_dir: String,
@@ -631,6 +642,7 @@ pub struct SettingsView {
 pub struct ResolvedPaths {
     pub claude: ResolvedClaudePaths,
     pub codex: ResolvedCodexPaths,
+    pub gemini: ResolvedGeminiPaths,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -655,6 +667,20 @@ pub struct ResolvedCodexPaths {
     pub history_exists: bool,
     pub sessions_exists: bool,
     pub archived_sessions_exists: bool,
+}
+
+/// Where the Antigravity source reads: Antigravity CLI conversations and Gemini CLI sessions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedGeminiPaths {
+    pub root: String,
+    /// `antigravity-cli/brain`, one directory per Antigravity CLI conversation.
+    pub antigravity_conversations: String,
+    /// `tmp`, one directory per project with Gemini CLI sessions under `chats/`.
+    pub gemini_cli_sessions: String,
+    pub root_exists: bool,
+    pub antigravity_conversations_exists: bool,
+    pub gemini_cli_sessions_exists: bool,
 }
 
 // ----------------------------- Token usage -----------------------------

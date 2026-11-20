@@ -26,10 +26,13 @@ export const en: Record<keyof typeof zh, string> = {
   agentClaude: "Claude Code",
   agentClaudeShort: "Claude",
   agentCodex: "Codex",
+  agentAntigravity: "Antigravity",
   agentAll: "All",
   agentFilterLabel: "Coding Agent data scope",
   overviewAgentSource: "Overview source",
   sidebarAgentSource: "Folder source",
+  sidebarResizeLabel: "Resize sidebar",
+  sidebarResizeTitle: "Drag to resize the sidebar; double-click to reset",
   searchAgentSource: "Search source",
   projectAgentSource: "Content source",
   exportAgentSource: "Export source",
@@ -189,6 +192,8 @@ export const en: Record<keyof typeof zh, string> = {
     "Estimated from reliably matched OpenAI API pricing; this is not actual ChatGPT subscription spend",
   costNoteAll:
     "API-equivalent estimate for models with reliable pricing; Codex amounts are not actual ChatGPT subscription spend",
+  costNoteAntigravity:
+    "Antigravity and Gemini CLI models are not priced yet; only tokens are counted",
   unknownModelNote:
     "{value} tokens from models without known pricing are excluded from cost",
   dailyCost: "Daily tokens & cost",
@@ -393,8 +398,14 @@ export const en: Record<keyof typeof zh, string> = {
   claudeDataDirPlaceholder: "Leave empty for default ~/.claude",
   codexDataDirLabel: "Codex data directory",
   codexDataDirPlaceholder: "Leave empty to use CODEX_HOME first, then ~/.codex",
+  geminiDataDirLabel: "Antigravity data directory",
+  geminiDataDirPlaceholder:
+    "Leave empty for default ~/.gemini (shared by Antigravity CLI and Gemini CLI)",
   claudeDataSource: "Claude Code",
   codexDataSource: "OpenAI Codex",
+  geminiDataSource: "Antigravity (incl. Gemini CLI)",
+  antigravityConversationsShort: "Antigravity CLI conversations",
+  geminiCliSessionsShort: "Gemini CLI sessions",
   advancedOverrides: "Advanced: per-path overrides",
   historyFileLabel: "History file (history.jsonl)",
   projectsDirLabel: "Projects directory (projects)",
@@ -544,7 +555,7 @@ export const en: Record<keyof typeof zh, string> = {
   updateInstalling: "Downloaded and verified, installing…",
   updateInstallFailed: "Update failed: {error}",
   updateSection: "Updates",
-  updateAutoCheck: "Check for updates at startup (at most once a day)",
+  updateAutoCheck: "Check for updates automatically (at most once an hour)",
   updatePrivacyHint:
     "Checking only requests this app's version list and update package from GitHub. No history is sent.",
   updateCheckNow: "Check for updates",

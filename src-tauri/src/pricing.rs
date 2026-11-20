@@ -120,6 +120,8 @@ fn lookup(agent: Agent, model: &str) -> Option<Rate> {
     let rates = match agent {
         Agent::Claude => CLAUDE_RATES,
         Agent::Codex => CODEX_RATES,
+        // Not priced yet: every Antigravity call counts as an unknown-price model.
+        Agent::Antigravity => &[],
     };
     rates
         .iter()

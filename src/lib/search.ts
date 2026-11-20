@@ -2,6 +2,7 @@
 // 这样返回键能回到结果列表，刷新或分享链接也不丢失上下文。
 
 import type { AgentFilter } from "./types";
+import { isAgent } from "./utils";
 
 export type SearchScope = "global" | "folder";
 export type SearchMode = "prompts" | "content";
@@ -25,8 +26,7 @@ export function parseSearchParams(search: string): SearchState {
   const scope: SearchScope =
     params.get("scope") === "folder" && project ? "folder" : "global";
   const agentRaw = params.get("agent");
-  const agent: AgentFilter =
-    agentRaw === "claude" || agentRaw === "codex" ? agentRaw : "all";
+  const agent: AgentFilter = isAgent(agentRaw) ? agentRaw : "all";
   const mode: SearchMode = params.get("mode") === "content" ? "content" : "prompts";
   return { q, scope, project, agent, mode };
 }

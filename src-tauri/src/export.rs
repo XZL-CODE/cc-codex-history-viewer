@@ -282,6 +282,7 @@ fn meta_suffix(e: &PromptEntry, lang: Lang) -> String {
     let agent = match e.agent {
         Agent::Claude => "Claude Code",
         Agent::Codex => "Codex",
+        Agent::Antigravity => "Antigravity",
     };
     let origin = match (lang, e.origin) {
         (Lang::Zh, PromptOrigin::History) => "历史",
@@ -411,6 +412,7 @@ fn agent_label(agent: Agent) -> &'static str {
     match agent {
         Agent::Claude => "Claude Code",
         Agent::Codex => "OpenAI Codex",
+        Agent::Antigravity => "Antigravity",
     }
 }
 
@@ -510,6 +512,7 @@ fn push_conversation_body(
             match detail.agent {
                 Agent::Claude => "🤖 Claude",
                 Agent::Codex => "🤖 Codex",
+                Agent::Antigravity => "🤖 Antigravity",
             }
         };
         let side = if m.is_sidechain {
