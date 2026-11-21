@@ -24,7 +24,7 @@ Status: implemented
 ## 与已有决定的关系
 
 [应用内检查更新与一键更新](./2026-10-11-in-app-updates.md) 的 Proposal 写明「启动后自动检查，每天最多
-一次」。用户裁定改为本 Note 的检查时机；本 Note 进 `implemented/` 时，该条改标已取代。
+一次」。用户裁定改为本 Note 的检查时机；该条已标已取代。
 
 ## Verification
 
