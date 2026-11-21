@@ -35,7 +35,7 @@ Status: implemented
 ## Decision
 
 已按 Proposal 落实，随 v0.14.0 发布。Antigravity 来源的记录没有档位字段，档位只体现在模型名后缀，按本 Note 的
-原值规则显示「未记录」，见 [第三个来源 Antigravity](../proposed/2026-11-20-antigravity-source.md)。
+原值规则显示「未记录」，见 [第三个来源 Antigravity](./2026-11-20-antigravity-source.md)。
 
 ## Risks
 
