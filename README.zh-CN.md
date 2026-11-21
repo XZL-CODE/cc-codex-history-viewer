@@ -107,7 +107,7 @@ Codex 文件已可能超过 1 GB。解析器逐行读取，不会先把整个 JS
 
 ## Antigravity 格式兼容
 
-Antigravity 来源包括 Antigravity CLI（`agy`）和它接替的 Gemini CLI；会话的「来源」显示 `antigravity-cli` 或 `gemini-cli`，Resume 命令随之为 `agy --conversation <ID>` 或 `gemini --resume <ID>`。只读纯文本，不读 Antigravity IDE 与桌面应用，也不读 CLI 的 SQLite 与 protobuf 文件。设计决定见 [Agent Note：第三个来源 Antigravity](.agents/notes/proposed/2026-11-20-antigravity-source.md)。
+Antigravity 来源包括 Antigravity CLI（`agy`）和它接替的 Gemini CLI；会话的「来源」显示 `antigravity-cli` 或 `gemini-cli`，Resume 命令随之为 `agy --conversation <ID>` 或 `gemini --resume <ID>`。只读纯文本，不读 Antigravity IDE 与桌面应用，也不读 CLI 的 SQLite 与 protobuf 文件。设计决定见 [Agent Note：第三个来源 Antigravity](.agents/notes/implemented/2026-11-20-antigravity-source.md)。
 
 - **Antigravity CLI**：转录每行是一步。`USER_INPUT` 是用户输入，只取 `<USER_REQUEST>` 块，去掉注入的本地时间与换模型提示；`PLANNER_RESPONSE` 是一次模型调用，含回复、思考、工具调用、模型与 Token；紧随其后的 `GENERIC` 是工具结果，按顺序对应调用。`SYSTEM_MESSAGE` 里的提醒不显示，子代理发回的报告显示为 `subagent` 结果。`transcript_full.jsonl` 的工具参数保留原类型；`transcript.jsonl` 把每个参数值再编码成 JSON 字符串，只在没有前者时读取并还原。
 - **工作目录**：转录里没有。先按会话 ID 查 `history.jsonl`；会话第一句输入写入历史时还没有 ID，所以再找 5 分钟内文字相同的历史行；再查 `cache/last_conversations.json`；子代理沿用父会话的。都找不到的会话（部分 `agy -p`）不归入任何文件夹。
@@ -261,7 +261,7 @@ Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/t
 
 应用读取本仓库最新 Release 里的 `latest.json`，版本号比当前高才提示。设计决定见 [Agent Note：应用内检查更新与一键更新](.agents/notes/implemented/2026-10-11-in-app-updates.md)。
 
-- **检查**：应用开着时每个整点（本机时间）自动检查一次；启动后和窗口重新获得焦点时，本小时还没查过也查一次。检查失败也算本小时查过，下个整点再试。电脑睡眠错过整点时，切回窗口或每 5 分钟的兜底会补查。上次发现的新版本还没装时，每次启动都会再查，让提示一直在。检查失败不弹提示，原因显示在设置的「更新」里。设置里可以关闭自动检查，也可以随时手动检查。检查时机见 [Agent Note](.agents/notes/proposed/2026-11-20-update-check-timing.md)。
+- **检查**：应用开着时每个整点（本机时间）自动检查一次；启动后和窗口重新获得焦点时，本小时还没查过也查一次。检查失败也算本小时查过，下个整点再试。电脑睡眠错过整点时，切回窗口或每 5 分钟的兜底会补查。上次发现的新版本还没装时，每次启动都会再查，让提示一直在。检查失败不弹提示，原因显示在设置的「更新」里。设置里可以关闭自动检查，也可以随时手动检查。检查时机见 [Agent Note](.agents/notes/implemented/2026-11-20-update-check-timing.md)。
 - **安装**：点顶栏的「新版本」查看更新内容，再点「立即更新」。更新包下载后先用应用内置的公钥核对签名，对不上就拒绝安装。macOS 原地替换应用后重新打开；Windows 由安装程序装完再打开（只显示进度条），msi 版会请求一次管理员确认。设置、索引缓存与保留的外部会话都在应用数据目录，更新不受影响。
 - **网络**：请求跟随系统代理。连不上 GitHub 时，可在设置里点「打开下载页」手动下载。
 - **第一次**：v0.12.0 及更早的版本没有这项功能，需要手动下载安装一次 v0.13.0 或更新的版本。
