@@ -544,6 +544,8 @@ export const en: Record<keyof typeof zh, string> = {
   updatePublishedAt: "released {date}",
   updateNotesTitle: "What's new",
   updateNoNotes: "This release has no notes.",
+  updateEarlierReleases: "Only the latest {count} versions are listed.",
+  updateViewAllReleases: "See all releases in browser",
   updateViewRelease: "View in browser",
   updateLater: "Later",
   updateInstallNow: "Update now",

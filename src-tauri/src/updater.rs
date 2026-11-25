@@ -2,8 +2,13 @@
 //!
 //! 应用只在这里联网，请求只取版本清单和更新包，不带任何历史内容。检查到的更新先记下来，用户点
 //! 「立即更新」时才下载安装；下载进度通过 `update-progress` 事件汇报。
+//!
+//! 清单的 `history` 是发版工作流写入的最近几版更新说明（新的在前），用来列出用户跳过的版本；
+//! 更新组件本身不读这个字段。
 
-use serde::Serialize;
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
@@ -39,8 +44,49 @@ pub struct UpdateInfo {
     pub current_version: String,
     /// 发布时间（RFC 3339），清单里没有时为空
     pub date: Option<String>,
-    /// 更新说明，即 Release 正文
+    /// 比当前版本新的各版更新说明，新的在前，第一项是最新版；清单没带历史时只有最新版
+    pub releases: Vec<ReleaseNotes>,
+}
+
+/// 一个版本的更新说明，即该版 Release 正文
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseNotes {
+    pub version: String,
+    /// 发布时间（RFC 3339），清单里是 `pub_date`
+    #[serde(alias = "pub_date")]
+    pub date: Option<String>,
     pub notes: Option<String>,
+}
+
+/// 用户跳过的各版更新说明：最新版用清单正文，再接上 `history` 里介于当前版与最新版之间的版本，
+/// 新的在前。历史缺失、格式不对或版本号解析不了的条目直接略过，不影响检查结果。
+fn missed_releases(
+    raw_json: &Value,
+    current_version: &str,
+    latest: ReleaseNotes,
+) -> Vec<ReleaseNotes> {
+    let parse = |version: &str| Version::parse(version.trim().trim_start_matches('v')).ok();
+    let (Some(current), Some(newest)) = (parse(current_version), parse(&latest.version)) else {
+        return vec![latest];
+    };
+    let mut older: Vec<(Version, ReleaseNotes)> = raw_json
+        .get("history")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| serde_json::from_value::<ReleaseNotes>(entry.clone()).ok())
+        .filter_map(|release| {
+            let version = parse(&release.version)?;
+            (version > current && version < newest).then_some((version, release))
+        })
+        .collect();
+    older.sort_by(|a, b| b.0.cmp(&a.0));
+    older.dedup_by(|a, b| a.0 == b.0);
+
+    let mut releases = vec![latest];
+    releases.extend(older.into_iter().map(|(_, release)| release));
+    releases
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -74,15 +120,23 @@ pub async fn check_for_update(
         .check()
         .await
         .map_err(|error| error.to_string())?;
-    let info = update.as_ref().map(|update| UpdateInfo {
-        version: update.version.clone(),
-        current_version: update.current_version.clone(),
-        date: update
+    let info = update.as_ref().map(|update| {
+        let date = update
             .raw_json
             .get("pub_date")
             .and_then(|date| date.as_str())
-            .map(str::to_string),
-        notes: update.body.clone(),
+            .map(str::to_string);
+        let latest = ReleaseNotes {
+            version: update.version.clone(),
+            date: date.clone(),
+            notes: update.body.clone(),
+        };
+        UpdateInfo {
+            version: update.version.clone(),
+            current_version: update.current_version.clone(),
+            date,
+            releases: missed_releases(&update.raw_json, &update.current_version, latest),
+        }
     });
     *pending.lock() = update;
     Ok(info)
@@ -143,4 +197,74 @@ pub async fn install_update(
     );
     update.install(bytes).map_err(|error| error.to_string())?;
     app.restart()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn latest(version: &str) -> ReleaseNotes {
+        ReleaseNotes {
+            version: version.into(),
+            date: Some("2026-11-25T00:00:00Z".into()),
+            notes: Some(format!("notes {version}")),
+        }
+    }
+
+    fn versions(releases: &[ReleaseNotes]) -> Vec<&str> {
+        releases
+            .iter()
+            .map(|release| release.version.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn lists_versions_between_current_and_latest_newest_first() {
+        let manifest = json!({
+            "version": "0.18.0",
+            "history": [
+                { "version": "0.18.0", "pub_date": "2026-11-25T00:00:00Z", "notes": "from history" },
+                { "version": "0.16.0", "pub_date": "2026-11-21T00:00:00Z", "notes": "notes 0.16.0" },
+                { "version": "0.17.0", "pub_date": "2026-11-23T00:00:00Z", "notes": "notes 0.17.0" },
+                { "version": "0.15.0", "pub_date": "2026-11-20T00:00:00Z", "notes": "notes 0.15.0" },
+                { "version": "0.14.0", "pub_date": "2026-11-19T00:00:00Z", "notes": "notes 0.14.0" }
+            ]
+        });
+        let releases = missed_releases(&manifest, "0.15.0", latest("0.18.0"));
+        assert_eq!(versions(&releases), ["0.18.0", "0.17.0", "0.16.0"]);
+        // 最新版用清单正文，不用 history 里的副本
+        assert_eq!(releases[0].notes.as_deref(), Some("notes 0.18.0"));
+        assert_eq!(releases[1].date.as_deref(), Some("2026-11-23T00:00:00Z"));
+    }
+
+    #[test]
+    fn compares_versions_as_semver() {
+        let manifest = json!({
+            "history": [
+                { "version": "v0.10.0", "notes": "tag spelling" },
+                { "version": "0.9.0", "notes": "older" },
+                { "version": "0.10.0", "notes": "duplicate" }
+            ]
+        });
+        let releases = missed_releases(&manifest, "0.9.0", latest("0.11.0"));
+        assert_eq!(versions(&releases), ["0.11.0", "v0.10.0"]);
+    }
+
+    #[test]
+    fn falls_back_to_latest_notes_without_usable_history() {
+        for manifest in [
+            json!({ "version": "0.16.0" }),
+            json!({ "history": "not a list" }),
+            json!({ "history": [{ "notes": "no version" }, { "version": "next", "notes": "bad" }] }),
+        ] {
+            let releases = missed_releases(&manifest, "0.15.0", latest("0.16.0"));
+            assert_eq!(releases, [latest("0.16.0")]);
+        }
+        let manifest = json!({ "history": [{ "version": "0.15.5" }] });
+        assert_eq!(
+            missed_releases(&manifest, "not semver", latest("0.16.0")),
+            [latest("0.16.0")]
+        );
+    }
 }

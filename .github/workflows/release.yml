@@ -5,7 +5,8 @@
 # .github/release-notes.md 里的本版更新内容（每次发版前更新）+ 下面 INSTALL_NOTES 里固定的安装说明。
 # Release 先建成草稿，两个平台都上传成功后由 publish 任务发布（标签此时指向构建的提交）。草稿不算「最新」，
 # 应用读取的 releases/latest/download/latest.json 因此只会指向两个平台都齐全的一版；任一平台失败时 Release
-# 停在草稿。已发布的版本不要重跑，修复请升版本号再发。
+# 停在草稿。publish 发布前给 latest.json 补上最近几版的更新说明（history），应用据此列出用户跳过的版本。
+# 已发布的版本不要重跑，修复请升版本号再发。
 name: Release desktop builds
 
 on:
@@ -107,6 +108,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # latest.json 加上 history：本版和之前最近 4 个已发布的正式版的更新说明，新的在前，去掉安装说明。
+      # 应用按自己的版本号挑出跳过的版本，最多显示 3 个，多带的版本用来判断还有没有更早的没列出；
+      # 更新组件不读这个字段，旧版应用照旧只看 notes。重跑时整个 history 重新生成
+      - name: Add recent release notes to latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          mkdir -p "$RUNNER_TEMP/draft" "$RUNNER_TEMP/manifest"
+          gh release download "v$version" --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json --dir "$RUNNER_TEMP/draft"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" > "$RUNNER_TEMP/releases.json"
+          jq --slurpfile releases "$RUNNER_TEMP/releases.json" --arg tag "v$version" '
+            def clean: gsub("\r"; "") | split("\n## 安装说明")[0];
+            .history = (
+              [{ version, pub_date, notes: ((.notes // "") | clean) }]
+              + ($releases[0]
+                | map(select((.draft | not) and (.prerelease | not) and .tag_name != $tag))
+                | sort_by(.published_at) | reverse | .[:4]
+                | map({
+                    version: (.tag_name | ltrimstr("v")),
+                    pub_date: .published_at,
+                    notes: ((.body // "") | clean)
+                  }))
+            )
+          ' "$RUNNER_TEMP/draft/latest.json" > "$RUNNER_TEMP/manifest/latest.json"
+          jq -r '.history[] | "\(.version)  \(.pub_date)  \(.notes | length) chars"' \
+            "$RUNNER_TEMP/manifest/latest.json"
+          gh release upload "v$version" "$RUNNER_TEMP/manifest/latest.json" \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Publish the draft release
         env:

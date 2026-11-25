@@ -431,11 +431,12 @@ dependencies = [
 
 [[package]]
 name = "cc-history-viewer"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
  "rayon",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
