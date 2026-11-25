@@ -436,6 +436,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "rayon",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
