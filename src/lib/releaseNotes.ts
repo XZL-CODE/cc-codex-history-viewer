@@ -13,6 +13,7 @@ const VERSION_HEADING = /^#{1,3}\s+v?\d+\.\d+\.\d+\b.*\n*/;
 const ITEM_START = /^ ?(?:[-*+]\s|\d+[.)]\s|#{1,6}\s)/;
 const INDENTED = /^(?: {2,}|\t)/;
 const FENCE = /^ {0,3}(?:```|~~~)/;
+const FENCED_BLOCK = /^ *(```|~~~)[^\n]*\n[\s\S]*?^ *\1[^\n]*$/gm;
 const HEADING = /^(#{1,6})\s+(.*)$/;
 
 const HAN = /\p{Script=Han}/gu;
@@ -66,8 +67,11 @@ function splitItems(text: string): Item[] {
 
 /** 一项的语言；没有文字时为 null */
 function textLang(text: string): LangCode | null {
-  // 行内代码与链接地址不算：中文条目里也常写 `~/.gemini`、`xhigh`
-  const prose = text.replace(/`[^`\n]*`/g, " ").replace(/\]\([^)]*\)/g, "]");
+  // 代码与链接地址不算：中文条目里也常写 `~/.gemini`、`xhigh`；单独的代码块两种语言都保留
+  const prose = text
+    .replace(FENCED_BLOCK, " ")
+    .replace(/`[^`\n]*`/g, " ")
+    .replace(/\]\([^)]*\)/g, "]");
   const han = prose.match(HAN)?.length ?? 0;
   const words = prose.match(LATIN_WORD)?.length ?? 0;
   if (han === 0) return words > 0 ? "en" : null;

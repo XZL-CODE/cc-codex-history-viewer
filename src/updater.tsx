@@ -29,6 +29,9 @@ const DUE_POLL_MS = 5 * 60 * 1000;
 /** 本应用最新一版的 Release 页面：检查或安装失败时交给浏览器下载 */
 export const RELEASES_URL =
   "https://github.com/XZL-CODE/cc-codex-history-viewer/releases/latest";
+/** 全部版本的 Release 列表：弹窗没列出的更早版本在这里看 */
+export const RELEASES_LIST_URL =
+  "https://github.com/XZL-CODE/cc-codex-history-viewer/releases";
 
 export type CheckStatus =
   | "idle"

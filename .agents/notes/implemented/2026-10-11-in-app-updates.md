@@ -50,3 +50,7 @@ Status: implemented
   Windows 上更新一次。
 - 发版产物核对：v0.13.0、v0.13.1 的 `latest.json` 经应用的固定地址可取到，平台条目齐全，各更新包的签名都能用应用里的
   公钥核对通过。
+
+## Related notes
+
+- [更新弹窗列出跳过的版本，说明跟随界面语言](../proposed/2026-11-25-missed-release-notes.md)

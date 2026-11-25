@@ -531,6 +531,8 @@ export const zh = {
   updatePublishedAt: "发布于 {date}",
   updateNotesTitle: "更新内容",
   updateNoNotes: "这一版没有附带更新说明。",
+  updateEarlierReleases: "只列出最近 {count} 个版本。",
+  updateViewAllReleases: "在浏览器中查看全部版本",
   updateViewRelease: "在浏览器中查看",
   updateLater: "稍后",
   updateInstallNow: "立即更新",

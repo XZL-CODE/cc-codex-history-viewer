@@ -579,7 +579,15 @@ export interface UpdateInfo {
   currentVersion: string;
   /** 发布时间（RFC 3339），清单里没有时为 null */
   date: string | null;
-  /** 更新说明，即 Release 正文 */
+  /** 比当前版本新的各版更新说明，新的在前，第一项是最新版；清单没带历史时只有最新版 */
+  releases: ReleaseNotes[];
+}
+
+/** 一个版本的更新说明，即该版 Release 正文 */
+export interface ReleaseNotes {
+  version: string;
+  /** 发布时间（RFC 3339），没有时为 null */
+  date: string | null;
   notes: string | null;
 }
 

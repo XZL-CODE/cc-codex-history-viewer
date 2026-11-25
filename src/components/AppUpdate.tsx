@@ -1,13 +1,14 @@
 // 应用内更新的界面：顶栏的新版本提示、更新弹窗、设置里的「更新」一节。
 
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowUpCircle, ExternalLink, X } from "lucide-react";
-import { useT } from "@/i18n";
+import { useLang, useT } from "@/i18n";
 import { useStore } from "@/store";
-import { RELEASES_URL, useUpdater } from "@/updater";
-import { absoluteTime, formatBytes } from "@/lib/utils";
+import { RELEASES_LIST_URL, RELEASES_URL, useUpdater } from "@/updater";
+import { cleanReleaseNotes, notesForLang } from "@/lib/releaseNotes";
+import { absoluteTime, dayLabel, formatBytes } from "@/lib/utils";
 import { Button, Spinner } from "./ui";
 
 // 更新说明用对话里的 Markdown 组件渲染；它和语法高亮单独拆包，打开弹窗时才加载
@@ -17,20 +18,15 @@ const Markdown = lazy(() =>
   }))
 );
 
-/** Release 正文末尾是给手动下载的人看的安装说明，应用内更新用不上 */
-const INSTALL_NOTES_HEADING = /^##\s+(安装说明|Install notes)/m;
-/** 正文开头的「## v0.14.0 更新内容 / What's new」与弹窗自己的标题重复 */
-const VERSION_HEADING = /^#{1,3}\s+v?\d+\.\d+\.\d+\b.*\n*/;
-
-function releaseNotes(notes: string | null): string {
-  if (!notes) return "";
-  const cut = notes.search(INSTALL_NOTES_HEADING);
-  const body = cut >= 0 ? notes.slice(0, cut) : notes;
-  return body.trim().replace(VERSION_HEADING, "").trim();
-}
+/** 弹窗最多列出的版本数：每版说明有三四条长句，再多就要翻很久才看得完 */
+const MAX_RELEASES_SHOWN = 3;
 
 function openReleasePage() {
   void openUrl(RELEASES_URL).catch(() => {});
+}
+
+function openReleaseList() {
+  void openUrl(RELEASES_LIST_URL).catch(() => {});
 }
 
 /** 顶栏：发现新版本时出现，点开更新弹窗 */
@@ -89,9 +85,30 @@ function InstallProgress() {
   );
 }
 
-/** 更新弹窗：版本、更新说明、立即更新；安装过程中不能关闭 */
+/** 一个版本的更新说明；Markdown 组件加载完之前先显示原文 */
+function ReleaseNotesBody({ notes }: { notes: string }) {
+  const t = useT();
+  if (!notes) {
+    return <p className="text-xs text-muted">{t("updateNoNotes")}</p>;
+  }
+  return (
+    <Suspense
+      fallback={
+        <p className="whitespace-pre-wrap text-xs text-muted">{notes}</p>
+      }
+    >
+      <Markdown text={notes} />
+    </Suspense>
+  );
+}
+
+/**
+ * 更新弹窗：版本、更新说明、立即更新；安装过程中不能关闭。
+ * 落后好几个版本时，从新到旧列出最近几版的说明；说明只显示界面语言那部分。
+ */
 export function UpdateDialog() {
   const t = useT();
+  const { lang } = useLang();
   const {
     available,
     dialogOpen,
@@ -110,10 +127,22 @@ export function UpdateDialog() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [dialogOpen, closeDialog]);
 
+  const releases = useMemo(
+    () =>
+      (available?.releases ?? [])
+        .slice(0, MAX_RELEASES_SHOWN)
+        .map((release) => ({
+          version: release.version,
+          published: release.date ? Date.parse(release.date) : NaN,
+          notes: notesForLang(cleanReleaseNotes(release.notes), lang),
+        })),
+    [available, lang]
+  );
+
   if (!dialogOpen || !available) return null;
 
-  const notes = releaseNotes(available.notes);
   const published = available.date ? Date.parse(available.date) : NaN;
+  const hasEarlier = available.releases.length > MAX_RELEASES_SHOWN;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -158,18 +187,40 @@ export function UpdateDialog() {
           <h3 className="mb-2 text-xs font-semibold text-foreground">
             {t("updateNotesTitle")}
           </h3>
-          {notes ? (
-            <Suspense
-              fallback={
-                <p className="whitespace-pre-wrap text-xs text-muted">
-                  {notes}
-                </p>
-              }
-            >
-              <Markdown text={notes} />
-            </Suspense>
+          {releases.length > 1 ? (
+            releases.map((release, index) => (
+              <section
+                key={release.version}
+                className={
+                  index > 0 ? "mt-4 border-t border-border pt-3" : undefined
+                }
+              >
+                <h4 className="mb-1.5 flex items-baseline gap-2 text-xs font-semibold text-foreground">
+                  v{release.version}
+                  {Number.isFinite(release.published) && (
+                    <span className="text-[11px] font-normal text-muted">
+                      {dayLabel(release.published)}
+                    </span>
+                  )}
+                </h4>
+                <ReleaseNotesBody notes={release.notes} />
+              </section>
+            ))
           ) : (
-            <p className="text-xs text-muted">{t("updateNoNotes")}</p>
+            <ReleaseNotesBody notes={releases[0]?.notes ?? ""} />
+          )}
+          {hasEarlier && (
+            <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-3 text-[11px] text-muted">
+              {t("updateEarlierReleases", { count: MAX_RELEASES_SHOWN })}
+              <button
+                type="button"
+                onClick={openReleaseList}
+                className="inline-flex items-center gap-1 text-accent transition-colors hover:underline"
+              >
+                <ExternalLink size={11} />
+                {t("updateViewAllReleases")}
+              </button>
+            </p>
           )}
         </div>
 
