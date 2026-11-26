@@ -1,4 +1,4 @@
-# Agent Note: Antigravity 按 Gemini API 价格估算成本
+# Agent Note: Antigravity 按 API 原价估算成本
 
 Status: proposed
 
@@ -13,13 +13,13 @@ Sonnet 5.5 与 GPT-OSS 120B；部分 Gemini 模型当前是限时优惠价，到
 - 价格继续写在 `pricing.rs` 里，新增 Gemini 表，按 Gemini API Standard 付费价。理由：用户在硬编码、远程价格表、
   第三方价格库与用户自填之间选择硬编码；与 Claude、Codex 一致，不新增联网，价格可审查、可测试；改价随发版，
   应用内更新每个整点检查。
-- 覆盖官方定价页上的全部 Gemini 文本模型。Antigravity CLI 的模型名先去掉推理档位后缀（`gemini-4-neon-xhigh` →
-  `gemini-4-neon`），再按完整 API 模型 ID 精确匹配。定价页不再列出价格的已下线模型，以及经 Antigravity 使用的
-  其他厂商模型，保持未知定价。理由：用户要求覆盖全部 Gemini 模型；价格必须有官方来源，查不到的不猜。
-- 每次调用按发生当天（UTC）适用的价格计：价格行可带生效日，来自定价页写明的调价和下线模型改按新模型计费的日期。
-  定价页没写起始日期的价格视为自发布起有效。理由：用户选择按调用时的价格；按现价重算会在每次调价后改动历史成本。
-- Pro 模型提示超过 20 万 Token 时按高一档计；隐式缓存命中按缓存读价；显式缓存的按小时存储费不计。理由：与定价页
-  一致；存储时长从会话记录里看不出来。
+- 只覆盖 Antigravity CLI 当前可选的模型：Gemini 4 Neon、Carbon、Argon、Hydrogen 与 Gemini 3.8 Flash 按 Gemini 表；
+  `claude-` 开头的模型按 Claude 表，表里补上 Claude Opus 5.5 与 Sonnet 5.5；模型名先去掉推理档位后缀
+  （`gemini-4-neon-xhigh` → `gemini-4-neon`）。GPT-OSS 120B 没有官方价格，与其他模型一样保持未知定价。理由：
+  用户要求只考虑 CLI 当前的模型；价格必须有官方来源，查不到的不猜。
+- 一律按原价（标准价）计，不用限时优惠价，价格不随调用日期变化。理由：用户要求价格固定、按原价。
+- 隐式缓存命中按缓存读价；显式缓存的按小时存储费与 Antigravity 不记录的缓存写不计。理由：与定价页一致；这些从
+  会话记录里看不出来。
 - 金额与 Codex 一样是 API 等价估算，不代表 Google AI 订阅的实际支出，界面说明写明这一点。理由：Antigravity CLI
   主要通过 Google AI 订阅使用。
 
