@@ -191,9 +191,9 @@ export const en: Record<keyof typeof zh, string> = {
   costNoteCodex:
     "Estimated from reliably matched OpenAI API pricing; this is not actual ChatGPT subscription spend",
   costNoteAll:
-    "API-equivalent estimate for models with reliable pricing; Codex amounts are not actual ChatGPT subscription spend",
+    "API-equivalent estimate for models with reliable pricing; Codex and Antigravity amounts are not actual subscription spend",
   costNoteAntigravity:
-    "Antigravity and Gemini CLI models are not priced yet; only tokens are counted",
+    "Estimated from Gemini and Claude API list prices; this is not actual Google AI subscription spend. Models without known pricing, such as GPT-OSS, are excluded",
   unknownModelNote:
     "{value} tokens from models without known pricing are excluded from cost",
   dailyCost: "Daily tokens & cost",

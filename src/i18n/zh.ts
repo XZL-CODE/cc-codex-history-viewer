@@ -187,8 +187,10 @@ export const zh = {
   costNoteClaude: "按 Claude 官方 API 定价在本地估算，缓存写按 5 分钟 / 1 小时分档计",
   inputTokens1hSub: "其中 1 小时档缓存写 {value}",
   costNoteCodex: "按可可靠匹配的 OpenAI API 价格估算，不代表 ChatGPT 订阅实际支出",
-  costNoteAll: "显示可可靠匹配价格的 API 等价估算；Codex 金额不代表 ChatGPT 订阅实际支出",
-  costNoteAntigravity: "Antigravity 与 Gemini CLI 的模型暂未定价，只统计 Token",
+  costNoteAll:
+    "显示可可靠匹配价格的 API 等价估算；Codex 与 Antigravity 金额不代表订阅实际支出",
+  costNoteAntigravity:
+    "按 Gemini 与 Claude 的 API 原价估算，不代表 Google AI 订阅实际支出；GPT-OSS 等未知价格的模型不计入",
   unknownModelNote: "另有 {value} tokens 来自未知定价模型，未计入成本",
   dailyCost: "每日 Token 与成本",
   byModel: "按模型",

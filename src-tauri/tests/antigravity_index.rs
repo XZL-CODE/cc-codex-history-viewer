@@ -216,12 +216,13 @@ fn index_resolves_projects_rolls_up_subagents_and_merges_prompts() {
     assert_eq!(gemini_calls.len(), 3);
     let usage = &index.session_usage[&(Agent::Antigravity, MAIN.to_string())];
     assert_eq!(usage.assistant_messages, 7);
-    // Not priced yet.
-    assert_eq!(usage.est_cost_usd, 0.0);
-    assert_eq!(
-        usage.unknown_model_tokens,
-        usage.total_tokens_including_cache
-    );
+    // Gemini 3.8 Flash calls (effort suffix stripped) at its standard price: 30,857 uncached at
+    // 1.50 + 17,739 cached at 0.15 + 970 output at 7.50 per million. The Claude Sonnet 4.6 call
+    // made through Antigravity uses the Claude table: 14,271 input at 3 + 191 output at 15.
+    let gemini = 0.0462855 + 0.00266085 + 0.007275;
+    let claude = 0.042813 + 0.002865;
+    assert!((usage.est_cost_usd - (gemini + claude)).abs() < 1e-12);
+    assert_eq!(usage.unknown_model_tokens, 0);
 
     // History lines without a conversation ID merge with the transcript's prompts.
     let read = index

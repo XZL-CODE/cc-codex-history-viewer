@@ -1,7 +1,10 @@
 //! Conservative API-equivalent model pricing.
 //!
-//! Rates are USD per million tokens and were checked against the Anthropic and OpenAI model
-//! pricing pages on 2026-07-17. Unknown or ambiguous model IDs intentionally return `None`.
+//! Rates are USD per million tokens at each model's standard list price (introductory or
+//! promotional prices are not used). Claude and Codex rates were checked against the Anthropic
+//! and OpenAI model pricing pages on 2026-07-17, with Claude Opus 5.5 / Sonnet 5.5 and the
+//! Gemini rates added on 2026-11-26 from the Anthropic and Gemini API pricing pages. Unknown or
+//! ambiguous model IDs intentionally return `None`.
 
 use crate::models::{Agent, CostParts, NormalizedUsage};
 use chrono::NaiveDate;
@@ -21,6 +24,9 @@ struct Rate {
 
 const CLAUDE_RATES: &[Rate] = &[
     rate("claude-fable-5", 10.0, 1.0, 12.5, 50.0),
+    // Cache hits on Opus 5.5 and Sonnet 5.5 are 0.05x input.
+    rate("claude-opus-5-5", 4.0, 0.2, 5.0, 20.0),
+    rate("claude-sonnet-5-5", 2.0, 0.1, 2.5, 10.0),
     rate("claude-opus-4-8", 5.0, 0.5, 6.25, 25.0),
     rate("claude-opus-4-7", 5.0, 0.5, 6.25, 25.0),
     rate("claude-opus-4-6", 5.0, 0.5, 6.25, 25.0),
@@ -59,6 +65,29 @@ const CODEX_RATES: &[Rate] = &[
     openai("gpt-4.1", 2.0, 0.5, 8.0),
 ];
 
+/// Gemini API Standard paid-tier list prices for the Gemini models Antigravity CLI offers, from
+/// <https://aistudio.google.com/docs/pricing> (2026-11-26). Gemini 4 Carbon / Argon and Gemini
+/// 3.8 Flash are listed at an introductory price for a limited time; the standard price after
+/// it ends is used. Explicit-cache storage (per hour) cannot be derived from transcripts.
+const GEMINI_RATES: &[Rate] = &[
+    gemini("gemini-4-neon", 3.0, 0.15, 15.0),
+    gemini("gemini-4-carbon", 4.0, 0.2, 20.0),
+    gemini("gemini-4-argon", 4.0, 0.2, 20.0),
+    gemini("gemini-4-hydrogen", 1.5, 0.075, 7.5),
+    gemini("gemini-3.8-flash", 1.5, 0.15, 7.5),
+];
+
+/// Antigravity CLI appends the reasoning effort to the model name (`gemini-4-neon-xhigh`,
+/// `claude-opus-5-5-high`); the API model ID is the name without it.
+const EFFORT_SUFFIXES: &[&str] = &["-minimal", "-low", "-medium", "-high", "-xhigh", "-max"];
+
+fn without_effort_suffix(model: &str) -> &str {
+    EFFORT_SUFFIXES
+        .iter()
+        .find_map(|suffix| model.strip_suffix(suffix))
+        .unwrap_or(model)
+}
+
 const fn rate(
     model: &'static str,
     input: f64,
@@ -86,6 +115,12 @@ const fn openai_long(model: &'static str, input: f64, cached_input: f64, output:
         long_context_threshold: Some(272_000),
         ..openai(model, input, cached_input, output)
     }
+}
+
+/// Gemini bills implicit cache hits at `cached_input` and records no cache writes; should one
+/// appear it is billed as plain input.
+const fn gemini(model: &'static str, input: f64, cached_input: f64, output: f64) -> Rate {
+    rate(model, input, cached_input, input, output)
 }
 
 fn is_snapshot_or_exact(model: &str, base: &str) -> bool {
@@ -117,11 +152,12 @@ fn is_snapshot_or_exact(model: &str, base: &str) -> bool {
 }
 
 fn lookup(agent: Agent, model: &str) -> Option<Rate> {
+    if agent == Agent::Antigravity {
+        return lookup_antigravity(model);
+    }
     let rates = match agent {
         Agent::Claude => CLAUDE_RATES,
-        Agent::Codex => CODEX_RATES,
-        // Not priced yet: every Antigravity call counts as an unknown-price model.
-        Agent::Antigravity => &[],
+        _ => CODEX_RATES,
     };
     rates
         .iter()
@@ -136,7 +172,20 @@ fn lookup(agent: Agent, model: &str) -> Option<Rate> {
         .max_by_key(|rate| rate.model.len())
 }
 
-/// Estimate standard API-equivalent cost. It is not a Claude/Codex subscription charge.
+/// Antigravity runs Gemini and Claude models (and others, such as GPT-OSS, that stay unpriced):
+/// Gemini models match their API ID exactly, Claude models use the Claude table.
+fn lookup_antigravity(model: &str) -> Option<Rate> {
+    let model = without_effort_suffix(model);
+    if model.starts_with("claude-") {
+        return lookup(Agent::Claude, model);
+    }
+    GEMINI_RATES
+        .iter()
+        .copied()
+        .find(|rate| rate.model == model)
+}
+
+/// Estimate standard API-equivalent cost. It is not a subscription charge.
 pub fn estimate_cost(agent: Agent, model: &str, usage: NormalizedUsage) -> Option<f64> {
     estimate_cost_parts(agent, model, usage).map(CostParts::total)
 }
@@ -321,5 +370,66 @@ mod tests {
     fn ambiguous_or_unknown_models_are_not_priced() {
         assert!(estimate_cost(Agent::Codex, "gpt-5.6-sol", usage(100, 0, 0, 100)).is_none());
         assert!(estimate_cost(Agent::Claude, "unknown-model", usage(100, 0, 0, 100)).is_none());
+    }
+
+    #[test]
+    fn claude_5_5_models_have_their_own_rates() {
+        let call = usage(1_000_000, 1_000_000, 1_000_000, 1_000_000);
+        // input + cache read + 5-minute write + output
+        let opus = estimate_cost(Agent::Claude, "claude-opus-5-5", call).unwrap();
+        assert!((opus - (4.0 + 0.2 + 5.0 + 20.0)).abs() < 1e-9);
+        // Sonnet 5.5 reads cache at 0.10, not Sonnet 5's 0.20.
+        let sonnet = estimate_cost(Agent::Claude, "claude-sonnet-5-5", call).unwrap();
+        assert!((sonnet - (2.0 + 0.1 + 2.5 + 10.0)).abs() < 1e-9);
+        let sonnet_5 = estimate_cost(Agent::Claude, "claude-sonnet-5", call).unwrap();
+        assert!((sonnet_5 - (2.0 + 0.2 + 2.5 + 10.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn antigravity_gemini_models_use_list_prices_without_effort_suffix() {
+        let call = usage(1_000_000, 1_000_000, 0, 1_000_000);
+        for (model, expected) in [
+            ("gemini-4-neon", 3.0 + 0.15 + 15.0),
+            ("gemini-4-neon-xhigh", 3.0 + 0.15 + 15.0),
+            // Standard prices, not the introductory ones
+            ("gemini-4-carbon-high", 4.0 + 0.2 + 20.0),
+            ("gemini-4-argon", 4.0 + 0.2 + 20.0),
+            ("gemini-4-hydrogen-low", 1.5 + 0.075 + 7.5),
+            ("gemini-3.8-flash-medium", 1.5 + 0.15 + 7.5),
+        ] {
+            let cost = estimate_cost(Agent::Antigravity, model, call).unwrap();
+            assert!((cost - expected).abs() < 1e-9, "{model}");
+        }
+    }
+
+    #[test]
+    fn antigravity_claude_models_use_the_claude_table() {
+        let call = usage(1_000_000, 1_000_000, 0, 1_000_000);
+        for model in ["claude-opus-5-5", "claude-opus-5-5-high"] {
+            let cost = estimate_cost(Agent::Antigravity, model, call).unwrap();
+            assert!((cost - (4.0 + 0.2 + 20.0)).abs() < 1e-9, "{model}");
+        }
+        let sonnet = estimate_cost(Agent::Antigravity, "claude-sonnet-5-5-low", call).unwrap();
+        assert!((sonnet - (2.0 + 0.1 + 10.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn other_antigravity_models_stay_unpriced() {
+        for model in [
+            "gpt-oss-120b",
+            "gpt-oss-120b-medium",
+            "orchestrator",
+            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-4-neon-preview",
+            "claude-unknown-9",
+        ] {
+            assert!(
+                estimate_cost(Agent::Antigravity, model, usage(100, 0, 0, 100)).is_none(),
+                "{model}"
+            );
+        }
+        // Gemini IDs are only priced for Antigravity calls.
+        assert!(estimate_cost(Agent::Codex, "gemini-4-neon", usage(100, 0, 0, 100)).is_none());
     }
 }

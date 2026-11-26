@@ -53,4 +53,4 @@ Status: implemented
 
 ## Related notes
 
-- [更新弹窗列出跳过的版本，说明跟随界面语言](../proposed/2026-11-25-missed-release-notes.md)
+- [更新弹窗列出跳过的版本，说明跟随界面语言](./2026-11-25-missed-release-notes.md)
