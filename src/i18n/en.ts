@@ -193,7 +193,7 @@ export const en: Record<keyof typeof zh, string> = {
   costNoteAll:
     "API-equivalent estimate for models with reliable pricing; Codex and Antigravity amounts are not actual subscription spend",
   costNoteAntigravity:
-    "Estimated from Gemini API standard pricing on the day of each call; this is not actual Google AI subscription spend. Other vendors' models are not priced",
+    "Estimated from Gemini and Claude API list prices; this is not actual Google AI subscription spend. Models without known pricing, such as GPT-OSS, are excluded",
   unknownModelNote:
     "{value} tokens from models without known pricing are excluded from cost",
   dailyCost: "Daily tokens & cost",

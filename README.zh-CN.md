@@ -209,7 +209,7 @@ cacheRead / (uncachedInput + cacheRead)
 
 成本按产品和可靠匹配的具体模型分别估算。Codex 成本显示为 **API 等价估算**，仅表示按对应 OpenAI API 标准 Token 单价换算的参考值，不代表 ChatGPT 或 Codex 订阅的实际账单、额度或积分消耗。
 
-无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。Antigravity 的调用按调用当天适用的 Gemini API 标准价估算（2026-11-26 对照 [Gemini API 定价](https://aistudio.google.com/docs/pricing) 核对），不代表 Google AI 订阅实际支出；定价页已不再列出的下线 Gemini 模型，以及经 Antigravity 使用的其他厂商模型，成本显示“—”。见 [Agent Note](.agents/notes/proposed/2026-11-26-gemini-pricing.md)。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
+无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。Antigravity 的调用按 Antigravity CLI 可选模型的 API 原价估算：Gemini 4 Neon、Carbon、Argon、Hydrogen 与 Gemini 3.8 Flash 按 [Gemini API 定价](https://aistudio.google.com/docs/pricing) 的标准价（不用限时优惠价，2026-11-26 核对），Claude 模型按 Claude 价格表；不代表 Google AI 订阅实际支出。GPT-OSS 120B 等没有公开价格的模型显示“—”。见 [Agent Note](.agents/notes/proposed/2026-11-26-gemini-pricing.md)。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
 
 Claude 缓存写按 5 分钟档（输入价 ×1.25）与 1 小时档（输入价 ×2）分别计价；旧记录没有分档字段时全部按 5 分钟档。
 
@@ -262,7 +262,7 @@ Claude Code 会把超大的工具输出写到 `projects/<目录名>/<会话ID>/t
 应用读取本仓库最新 Release 里的 `latest.json`，版本号比当前高才提示。设计决定见 [Agent Note：应用内检查更新与一键更新](.agents/notes/implemented/2026-10-11-in-app-updates.md)。
 
 - **检查**：应用开着时每个整点（本机时间）自动检查一次；启动后和窗口重新获得焦点时，本小时还没查过也查一次。检查失败也算本小时查过，下个整点再试。电脑睡眠错过整点时，切回窗口或每 5 分钟的兜底会补查。上次发现的新版本还没装时，每次启动都会再查，让提示一直在。检查失败不弹提示，原因显示在设置的「更新」里。设置里可以关闭自动检查，也可以随时手动检查。检查时机见 [Agent Note](.agents/notes/implemented/2026-11-20-update-check-timing.md)。
-- **安装**：点顶栏的「新版本」查看更新内容，再点「立即更新」。跳过了好几个版本时，从新到旧列出最近 3 个版本的更新内容，更多时可在浏览器查看全部版本；更新内容只显示应用当前界面语言那部分。见 [Agent Note](.agents/notes/proposed/2026-11-25-missed-release-notes.md)。更新包下载后先用应用内置的公钥核对签名，对不上就拒绝安装。macOS 原地替换应用后重新打开；Windows 由安装程序装完再打开（只显示进度条），msi 版会请求一次管理员确认。设置、索引缓存与保留的外部会话都在应用数据目录，更新不受影响。
+- **安装**：点顶栏的「新版本」查看更新内容，再点「立即更新」。跳过了好几个版本时，从新到旧列出最近 3 个版本的更新内容，更多时可在浏览器查看全部版本；更新内容只显示应用当前界面语言那部分。见 [Agent Note](.agents/notes/implemented/2026-11-25-missed-release-notes.md)。更新包下载后先用应用内置的公钥核对签名，对不上就拒绝安装。macOS 原地替换应用后重新打开；Windows 由安装程序装完再打开（只显示进度条），msi 版会请求一次管理员确认。设置、索引缓存与保留的外部会话都在应用数据目录，更新不受影响。
 - **网络**：请求跟随系统代理。连不上 GitHub 时，可在设置里点「打开下载页」手动下载。
 - **第一次**：v0.12.0 及更早的版本没有这项功能，需要手动下载安装一次 v0.13.0 或更新的版本。
 

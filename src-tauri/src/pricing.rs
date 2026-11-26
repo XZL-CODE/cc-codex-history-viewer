@@ -1,55 +1,32 @@
 //! Conservative API-equivalent model pricing.
 //!
-//! Rates are USD per million tokens. Claude and Codex rates were checked against the Anthropic
-//! and OpenAI model pricing pages on 2026-07-17, Gemini rates against Google's Gemini API pricing
-//! page on 2026-11-26. Unknown or ambiguous model IDs intentionally return `None`.
-//!
-//! A model can have several rates with different `since` days: each call is priced at the rate
-//! in effect on its UTC day, so a later price change does not reprice older calls.
+//! Rates are USD per million tokens at each model's standard list price (introductory or
+//! promotional prices are not used). Claude and Codex rates were checked against the Anthropic
+//! and OpenAI model pricing pages on 2026-07-17, with Claude Opus 5.5 / Sonnet 5.5 and the
+//! Gemini rates added on 2026-11-26 from the Anthropic and Gemini API pricing pages. Unknown or
+//! ambiguous model IDs intentionally return `None`.
 
 use crate::models::{Agent, CostParts, NormalizedUsage};
-use chrono::{DateTime, NaiveDate};
+use chrono::NaiveDate;
 
 #[derive(Clone, Copy)]
 struct Rate {
     model: &'static str,
-    /// First UTC day (`yyyy-mm-dd`) the rate applies to; `None` = from the model's release.
-    since: Option<&'static str>,
     input: f64,
     cached_input: f64,
     /// 5-minute cache write rate (Claude: 1.25x input).
     cache_write: f64,
-    /// 1-hour cache write rate (Claude: 2x input). Codex and Gemini never record cache writes.
+    /// 1-hour cache write rate (Claude: 2x input). Codex never records cache writes.
     cache_write_1h: f64,
     output: f64,
-    long_context: Option<LongContext>,
+    long_context_threshold: Option<u64>,
 }
-
-/// Higher tier for long prompts: when uncached + cached input exceeds `threshold`, the whole
-/// call's input (cached included) and output are billed at the multiplied rates.
-#[derive(Clone, Copy)]
-struct LongContext {
-    threshold: u64,
-    input_multiplier: f64,
-    output_multiplier: f64,
-}
-
-/// OpenAI's long-context rule for models with a 1M-token window.
-const OPENAI_LONG_CONTEXT: LongContext = LongContext {
-    threshold: 272_000,
-    input_multiplier: 2.0,
-    output_multiplier: 1.5,
-};
-
-/// Gemini Pro models bill prompts over 200k tokens at 2x input / cached input and 1.5x output.
-const GEMINI_LONG_CONTEXT: LongContext = LongContext {
-    threshold: 200_000,
-    input_multiplier: 2.0,
-    output_multiplier: 1.5,
-};
 
 const CLAUDE_RATES: &[Rate] = &[
     rate("claude-fable-5", 10.0, 1.0, 12.5, 50.0),
+    // Cache hits on Opus 5.5 and Sonnet 5.5 are 0.05x input.
+    rate("claude-opus-5-5", 4.0, 0.2, 5.0, 20.0),
+    rate("claude-sonnet-5-5", 2.0, 0.1, 2.5, 10.0),
     rate("claude-opus-4-8", 5.0, 0.5, 6.25, 25.0),
     rate("claude-opus-4-7", 5.0, 0.5, 6.25, 25.0),
     rate("claude-opus-4-6", 5.0, 0.5, 6.25, 25.0),
@@ -88,47 +65,23 @@ const CODEX_RATES: &[Rate] = &[
     openai("gpt-4.1", 2.0, 0.5, 8.0),
 ];
 
-/// Gemini API Standard paid-tier rates from the official pricing page
-/// (<https://aistudio.google.com/docs/pricing>) and the deprecation notes, checked 2026-11-26.
-/// A row holds from its `since` day (or the model's release) until the model's next row; prices
-/// the page lists without a start date are assumed to hold since release. Retired models the
-/// page no longer prices (gemini-3.5-flash, gemini-3.7-flash, gemini-2.0-flash, 2.5 previews,
-/// gemini-3-pro-preview before it pointed to 3.1 Pro) stay unpriced. Explicit-cache storage
-/// (per hour) cannot be derived from transcripts and is not counted.
+/// Gemini API Standard paid-tier list prices for the Gemini models Antigravity CLI offers, from
+/// <https://aistudio.google.com/docs/pricing> (2026-11-26). Gemini 4 Carbon / Argon and Gemini
+/// 3.8 Flash are listed at an introductory price for a limited time; the standard price after
+/// it ends is used. Explicit-cache storage (per hour) cannot be derived from transcripts.
 const GEMINI_RATES: &[Rate] = &[
-    gemini("gemini-4-neon", None, 3.0, 0.15, 15.0),
-    gemini("gemini-4-hydrogen", None, 1.5, 0.075, 7.5),
-    // Introductory price through 2026-11-30.
-    gemini("gemini-4-carbon", None, 2.0, 0.1, 10.0),
-    gemini("gemini-4-carbon", Some("2026-12-01"), 4.0, 0.2, 20.0),
-    gemini("gemini-4-argon", None, 2.0, 0.1, 10.0),
-    gemini("gemini-4-argon", Some("2026-12-01"), 4.0, 0.2, 20.0),
-    // Introductory price through 2026-12-31.
-    gemini("gemini-3.8-flash", None, 0.75, 0.075, 3.75),
-    gemini("gemini-3.8-flash", Some("2027-01-01"), 1.5, 0.15, 7.5),
-    gemini("gemini-3.6-flash", None, 0.75, 0.075, 3.75),
-    gemini("gemini-3.6-flash", Some("2027-01-01"), 1.5, 0.15, 7.5),
-    gemini("gemini-3.5-flash-lite", None, 0.3, 0.03, 2.5),
-    gemini_long("gemini-3.1-pro-preview", None, 2.0, 0.2, 12.0),
-    gemini_long("gemini-3.1-pro-preview-customtools", None, 2.0, 0.2, 12.0),
-    // Points to gemini-3.1-pro-preview since 2026-03-09; its earlier price is no longer listed.
-    gemini_long("gemini-3-pro-preview", Some("2026-03-09"), 2.0, 0.2, 12.0),
-    gemini("gemini-3.1-flash-lite", None, 0.25, 0.025, 1.5),
-    gemini("gemini-3-flash-preview", None, 0.5, 0.05, 3.0),
-    gemini_long("gemini-2.5-pro", None, 1.25, 0.125, 10.0),
-    // From 2026-12-01 requests route to gemini-3.8-flash and are billed at its rates.
-    gemini("gemini-2.5-pro", Some("2026-12-01"), 0.75, 0.075, 3.75),
-    gemini("gemini-2.5-pro", Some("2027-01-01"), 1.5, 0.15, 7.5),
-    // From 2026-12-01 requests route to gemini-3.5-flash-lite, billed at the same rates.
-    gemini("gemini-2.5-flash", None, 0.3, 0.03, 2.5),
-    gemini("gemini-2.5-flash-lite", None, 0.1, 0.01, 0.4),
+    gemini("gemini-4-neon", 3.0, 0.15, 15.0),
+    gemini("gemini-4-carbon", 4.0, 0.2, 20.0),
+    gemini("gemini-4-argon", 4.0, 0.2, 20.0),
+    gemini("gemini-4-hydrogen", 1.5, 0.075, 7.5),
+    gemini("gemini-3.8-flash", 1.5, 0.15, 7.5),
 ];
 
-/// Antigravity CLI appends the reasoning effort to the model name (`gemini-4-neon-xhigh`); the
-/// API model ID is the name without it.
+/// Antigravity CLI appends the reasoning effort to the model name (`gemini-4-neon-xhigh`,
+/// `claude-opus-5-5-high`); the API model ID is the name without it.
 const EFFORT_SUFFIXES: &[&str] = &["-minimal", "-low", "-medium", "-high", "-xhigh", "-max"];
 
-fn gemini_model_id(model: &str) -> &str {
+fn without_effort_suffix(model: &str) -> &str {
     EFFORT_SUFFIXES
         .iter()
         .find_map(|suffix| model.strip_suffix(suffix))
@@ -144,13 +97,12 @@ const fn rate(
 ) -> Rate {
     Rate {
         model,
-        since: None,
         input,
         cached_input,
         cache_write,
         cache_write_1h: input * 2.0,
         output,
-        long_context: None,
+        long_context_threshold: None,
     }
 }
 
@@ -160,43 +112,15 @@ const fn openai(model: &'static str, input: f64, cached_input: f64, output: f64)
 
 const fn openai_long(model: &'static str, input: f64, cached_input: f64, output: f64) -> Rate {
     Rate {
-        long_context: Some(OPENAI_LONG_CONTEXT),
+        long_context_threshold: Some(272_000),
         ..openai(model, input, cached_input, output)
     }
 }
 
 /// Gemini bills implicit cache hits at `cached_input` and records no cache writes; should one
 /// appear it is billed as plain input.
-const fn gemini(
-    model: &'static str,
-    since: Option<&'static str>,
-    input: f64,
-    cached_input: f64,
-    output: f64,
-) -> Rate {
-    Rate {
-        model,
-        since,
-        input,
-        cached_input,
-        cache_write: input,
-        cache_write_1h: input,
-        output,
-        long_context: None,
-    }
-}
-
-const fn gemini_long(
-    model: &'static str,
-    since: Option<&'static str>,
-    input: f64,
-    cached_input: f64,
-    output: f64,
-) -> Rate {
-    Rate {
-        long_context: Some(GEMINI_LONG_CONTEXT),
-        ..gemini(model, since, input, cached_input, output)
-    }
+const fn gemini(model: &'static str, input: f64, cached_input: f64, output: f64) -> Rate {
+    rate(model, input, cached_input, input, output)
 }
 
 fn is_snapshot_or_exact(model: &str, base: &str) -> bool {
@@ -227,63 +151,48 @@ fn is_snapshot_or_exact(model: &str, base: &str) -> bool {
         })
 }
 
-/// The call's UTC day as `yyyy-mm-dd`, comparable with [`Rate::since`].
-fn call_day(timestamp_ms: i64) -> String {
-    DateTime::from_timestamp_millis(timestamp_ms)
-        .unwrap_or_default()
-        .format("%Y-%m-%d")
-        .to_string()
-}
-
-/// The rate for `model` on the call's day: the most specific matching model ID wins, then the
-/// latest `since` that is not after the call.
-fn lookup(agent: Agent, model: &str, timestamp_ms: i64) -> Option<Rate> {
-    // Antigravity calls are priced at Gemini API rates only; other vendors' models it can run
-    // (such as Claude) stay unpriced.
-    let (rates, model) = match agent {
-        Agent::Claude => (CLAUDE_RATES, model),
-        Agent::Codex => (CODEX_RATES, model),
-        Agent::Antigravity => (GEMINI_RATES, gemini_model_id(model)),
+fn lookup(agent: Agent, model: &str) -> Option<Rate> {
+    if agent == Agent::Antigravity {
+        return lookup_antigravity(model);
+    }
+    let rates = match agent {
+        Agent::Claude => CLAUDE_RATES,
+        _ => CODEX_RATES,
     };
-    let matches = |rate: &&Rate| match agent {
-        Agent::Claude => model.starts_with(rate.model),
-        Agent::Codex => is_snapshot_or_exact(model, rate.model),
-        Agent::Antigravity => model == rate.model,
-    };
-    let longest = rates
-        .iter()
-        .filter(matches)
-        .map(|rate| rate.model.len())
-        .max()?;
-    let day = call_day(timestamp_ms);
     rates
         .iter()
-        .filter(matches)
-        .filter(|rate| rate.model.len() == longest)
-        .filter(|rate| rate.since.map_or(true, |since| since <= day.as_str()))
-        .max_by_key(|rate| rate.since)
         .copied()
+        .filter(|rate| {
+            if agent == Agent::Claude {
+                model.starts_with(rate.model)
+            } else {
+                is_snapshot_or_exact(model, rate.model)
+            }
+        })
+        .max_by_key(|rate| rate.model.len())
 }
 
-/// Estimate standard API-equivalent cost of a call made at `timestamp_ms` (Unix milliseconds).
-/// It is not a subscription charge.
-pub fn estimate_cost(
-    agent: Agent,
-    model: &str,
-    timestamp_ms: i64,
-    usage: NormalizedUsage,
-) -> Option<f64> {
-    estimate_cost_parts(agent, model, timestamp_ms, usage).map(CostParts::total)
+/// Antigravity runs Gemini and Claude models (and others, such as GPT-OSS, that stay unpriced):
+/// Gemini models match their API ID exactly, Claude models use the Claude table.
+fn lookup_antigravity(model: &str) -> Option<Rate> {
+    let model = without_effort_suffix(model);
+    if model.starts_with("claude-") {
+        return lookup(Agent::Claude, model);
+    }
+    GEMINI_RATES
+        .iter()
+        .copied()
+        .find(|rate| rate.model == model)
+}
+
+/// Estimate standard API-equivalent cost. It is not a subscription charge.
+pub fn estimate_cost(agent: Agent, model: &str, usage: NormalizedUsage) -> Option<f64> {
+    estimate_cost_parts(agent, model, usage).map(CostParts::total)
 }
 
 /// [`estimate_cost`] split by billing category; the parts add up to the estimate.
-pub fn estimate_cost_parts(
-    agent: Agent,
-    model: &str,
-    timestamp_ms: i64,
-    usage: NormalizedUsage,
-) -> Option<CostParts> {
-    let rate = lookup(agent, model, timestamp_ms)?;
+pub fn estimate_cost_parts(agent: Agent, model: &str, usage: NormalizedUsage) -> Option<CostParts> {
+    let rate = lookup(agent, model)?;
     let (input_multiplier, output_multiplier) = multipliers(rate, usage);
     Some(CostParts {
         uncached_input: usage.uncached_input as f64 * rate.input * input_multiplier / 1_000_000.0,
@@ -302,10 +211,9 @@ pub fn estimate_cost_parts(
 pub fn estimate_cost_without_cache(
     agent: Agent,
     model: &str,
-    timestamp_ms: i64,
     usage: NormalizedUsage,
 ) -> Option<f64> {
-    let rate = lookup(agent, model, timestamp_ms)?;
+    let rate = lookup(agent, model)?;
     let (input_multiplier, output_multiplier) = multipliers(rate, usage);
     Some(
         (usage.context_tokens() as f64 * rate.input * input_multiplier
@@ -314,23 +222,22 @@ pub fn estimate_cost_without_cache(
     )
 }
 
-/// Long-context surcharge for rates with a [`LongContext`] tier: (input, output) multipliers.
+/// Long-context surcharge (OpenAI models with a threshold): (input, output) multipliers.
 fn multipliers(rate: Rate, usage: NormalizedUsage) -> (f64, f64) {
     let input_total = usage.uncached_input.saturating_add(usage.cache_read);
-    match rate.long_context {
-        Some(tier) if input_total > tier.threshold => {
-            (tier.input_multiplier, tier.output_multiplier)
-        }
-        _ => (1.0, 1.0),
+    let long_context = rate
+        .long_context_threshold
+        .is_some_and(|threshold| input_total > threshold);
+    if long_context {
+        (2.0, 1.5)
+    } else {
+        (1.0, 1.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A call day after every dated rate in the Claude and Codex tables.
-    const T: i64 = 1_790_000_000_000;
 
     fn usage(input: u64, cached: u64, creation: u64, output: u64) -> NormalizedUsage {
         NormalizedUsage {
@@ -348,7 +255,6 @@ mod tests {
         let cost = estimate_cost(
             Agent::Claude,
             "claude-sonnet-4-5-20250929",
-            T,
             usage(1_000_000, 1_000_000, 1_000_000, 1_000_000),
         )
         .unwrap();
@@ -360,12 +266,12 @@ mod tests {
         let mut split = usage(0, 0, 1_000_000, 0);
         split.cache_creation_1h = 400_000;
         let parts =
-            estimate_cost_parts(Agent::Claude, "claude-sonnet-4-5-20250929", T, split).unwrap();
+            estimate_cost_parts(Agent::Claude, "claude-sonnet-4-5-20250929", split).unwrap();
         // 600k at 3.75 + 400k at 6.00
         assert!((parts.cache_creation - (2.25 + 2.4)).abs() < 1e-9);
         assert_eq!(parts.uncached_input, 0.0);
         assert!(
-            (parts.total() - estimate_cost(Agent::Claude, "claude-sonnet-4-5", T, split).unwrap())
+            (parts.total() - estimate_cost(Agent::Claude, "claude-sonnet-4-5", split).unwrap())
                 .abs()
                 < 1e-12
         );
@@ -374,22 +280,22 @@ mod tests {
     #[test]
     fn cost_parts_add_up_and_no_cache_estimate_bills_all_input_uncached() {
         let call = usage(100_000, 900_000, 50_000, 10_000);
-        let parts = estimate_cost_parts(Agent::Claude, "claude-sonnet-4-5", T, call).unwrap();
-        let total = estimate_cost(Agent::Claude, "claude-sonnet-4-5", T, call).unwrap();
+        let parts = estimate_cost_parts(Agent::Claude, "claude-sonnet-4-5", call).unwrap();
+        let total = estimate_cost(Agent::Claude, "claude-sonnet-4-5", call).unwrap();
         assert!((parts.total() - total).abs() < 1e-12);
         let no_cache =
-            estimate_cost_without_cache(Agent::Claude, "claude-sonnet-4-5", T, call).unwrap();
+            estimate_cost_without_cache(Agent::Claude, "claude-sonnet-4-5", call).unwrap();
         // 1.05M input at 3.00 + 10k output at 15.00
         assert!((no_cache - (3.15 + 0.15)).abs() < 1e-9);
         assert!(no_cache > total, "reads at 0.3 beat writes at 3.75 here");
 
         // Codex: cached input is discounted, nothing is written, long-context rule applies to both.
         let codex = usage(300_000, 100_000, 0, 100_000);
-        let priced = estimate_cost(Agent::Codex, "gpt-5.4", T, codex).unwrap();
-        let unpriced = estimate_cost_without_cache(Agent::Codex, "gpt-5.4", T, codex).unwrap();
+        let priced = estimate_cost(Agent::Codex, "gpt-5.4", codex).unwrap();
+        let unpriced = estimate_cost_without_cache(Agent::Codex, "gpt-5.4", codex).unwrap();
         assert!((priced - (1.5 + 0.05 + 2.25)).abs() < 1e-9);
         assert!((unpriced - (2.0 + 2.25)).abs() < 1e-9);
-        assert!(estimate_cost_without_cache(Agent::Claude, "unknown-model", T, call).is_none());
+        assert!(estimate_cost_without_cache(Agent::Claude, "unknown-model", call).is_none());
     }
 
     #[test]
@@ -397,7 +303,6 @@ mod tests {
         let cost = estimate_cost(
             Agent::Codex,
             "gpt-5.3-codex",
-            T,
             usage(600_000, 400_000, 0, 200_000),
         )
         .unwrap();
@@ -406,56 +311,33 @@ mod tests {
 
     #[test]
     fn codex_long_context_multiplier_is_applied_when_observable() {
-        let cost =
-            estimate_cost(Agent::Codex, "gpt-5.4", T, usage(300_000, 0, 0, 100_000)).unwrap();
+        let cost = estimate_cost(Agent::Codex, "gpt-5.4", usage(300_000, 0, 0, 100_000)).unwrap();
         assert!((cost - 3.75).abs() < 1e-9);
     }
 
     #[test]
     fn mini_and_nano_do_not_get_a_long_context_surcharge() {
-        let mini = estimate_cost(
-            Agent::Codex,
-            "gpt-5.4-mini",
-            T,
-            usage(300_000, 0, 0, 100_000),
-        )
-        .unwrap();
-        let nano = estimate_cost(
-            Agent::Codex,
-            "gpt-5.4-nano",
-            T,
-            usage(300_000, 0, 0, 100_000),
-        )
-        .unwrap();
+        let mini =
+            estimate_cost(Agent::Codex, "gpt-5.4-mini", usage(300_000, 0, 0, 100_000)).unwrap();
+        let nano =
+            estimate_cost(Agent::Codex, "gpt-5.4-nano", usage(300_000, 0, 0, 100_000)).unwrap();
         assert!((mini - 0.675).abs() < 1e-9);
         assert!((nano - 0.185).abs() < 1e-9);
     }
 
     #[test]
     fn newly_supported_official_codex_rates_are_priced() {
-        let gpt_55 =
-            estimate_cost(Agent::Codex, "gpt-5.5", T, usage(300_000, 0, 0, 100_000)).unwrap();
+        let gpt_55 = estimate_cost(Agent::Codex, "gpt-5.5", usage(300_000, 0, 0, 100_000)).unwrap();
         let codex_max = estimate_cost(
             Agent::Codex,
             "gpt-5.1-codex-max",
-            T,
             usage(1_000_000, 0, 0, 1_000_000),
         )
         .unwrap();
-        let o4_mini = estimate_cost(
-            Agent::Codex,
-            "o4-mini",
-            T,
-            usage(1_000_000, 0, 0, 1_000_000),
-        )
-        .unwrap();
-        let gpt_41 = estimate_cost(
-            Agent::Codex,
-            "gpt-4.1",
-            T,
-            usage(1_000_000, 0, 0, 1_000_000),
-        )
-        .unwrap();
+        let o4_mini =
+            estimate_cost(Agent::Codex, "o4-mini", usage(1_000_000, 0, 0, 1_000_000)).unwrap();
+        let gpt_41 =
+            estimate_cost(Agent::Codex, "gpt-4.1", usage(1_000_000, 0, 0, 1_000_000)).unwrap();
         assert!((gpt_55 - 7.5).abs() < 1e-9);
         assert!((codex_max - 11.25).abs() < 1e-9);
         assert!((o4_mini - 5.5).abs() < 1e-9);
@@ -469,7 +351,7 @@ mod tests {
             "gpt-5.1-codex-max-20260717",
             "gpt-5.1-codex-max-2026-07-17",
         ] {
-            assert!(estimate_cost(Agent::Codex, model, T, usage(100, 0, 0, 100)).is_some());
+            assert!(estimate_cost(Agent::Codex, model, usage(100, 0, 0, 100)).is_some());
         }
 
         for model in [
@@ -480,141 +362,74 @@ mod tests {
             "gpt-5.1-codex-max-2026-02-30",
             "gpt-5.1-codex-max-20260717-preview",
         ] {
-            assert!(estimate_cost(Agent::Codex, model, T, usage(100, 0, 0, 100)).is_none());
+            assert!(estimate_cost(Agent::Codex, model, usage(100, 0, 0, 100)).is_none());
         }
     }
 
     #[test]
     fn ambiguous_or_unknown_models_are_not_priced() {
-        assert!(estimate_cost(Agent::Codex, "gpt-5.6-sol", T, usage(100, 0, 0, 100)).is_none());
-        assert!(estimate_cost(Agent::Claude, "unknown-model", T, usage(100, 0, 0, 100)).is_none());
-    }
-
-    /// Noon UTC on the given day, in Unix milliseconds.
-    fn day(date: &str) -> i64 {
-        NaiveDate::parse_from_str(date, "%Y-%m-%d")
-            .unwrap()
-            .and_hms_opt(12, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp_millis()
-    }
-
-    fn gemini_cost(model: &str, date: &str, call: NormalizedUsage) -> Option<f64> {
-        estimate_cost(Agent::Antigravity, model, day(date), call)
+        assert!(estimate_cost(Agent::Codex, "gpt-5.6-sol", usage(100, 0, 0, 100)).is_none());
+        assert!(estimate_cost(Agent::Claude, "unknown-model", usage(100, 0, 0, 100)).is_none());
     }
 
     #[test]
-    fn gemini_rates_have_valid_ordered_since_days() {
-        for rate in GEMINI_RATES {
-            if let Some(since) = rate.since {
-                assert!(
-                    NaiveDate::parse_from_str(since, "%Y-%m-%d").is_ok(),
-                    "{}: {since}",
-                    rate.model
-                );
-            }
-        }
-        // Rows of one model are listed oldest first, without duplicate days.
-        for (index, rate) in GEMINI_RATES.iter().enumerate() {
-            for later in &GEMINI_RATES[index + 1..] {
-                if later.model == rate.model {
-                    assert!(later.since > rate.since, "{} rows out of order", rate.model);
-                }
-            }
-        }
+    fn claude_5_5_models_have_their_own_rates() {
+        let call = usage(1_000_000, 1_000_000, 1_000_000, 1_000_000);
+        // input + cache read + 5-minute write + output
+        let opus = estimate_cost(Agent::Claude, "claude-opus-5-5", call).unwrap();
+        assert!((opus - (4.0 + 0.2 + 5.0 + 20.0)).abs() < 1e-9);
+        // Sonnet 5.5 reads cache at 0.10, not Sonnet 5's 0.20.
+        let sonnet = estimate_cost(Agent::Claude, "claude-sonnet-5-5", call).unwrap();
+        assert!((sonnet - (2.0 + 0.1 + 2.5 + 10.0)).abs() < 1e-9);
+        let sonnet_5 = estimate_cost(Agent::Claude, "claude-sonnet-5", call).unwrap();
+        assert!((sonnet_5 - (2.0 + 0.2 + 2.5 + 10.0)).abs() < 1e-9);
     }
 
     #[test]
-    fn antigravity_effort_suffix_is_stripped_before_lookup() {
+    fn antigravity_gemini_models_use_list_prices_without_effort_suffix() {
         let call = usage(1_000_000, 1_000_000, 0, 1_000_000);
-        // 3.00 input + 0.15 cached + 15.00 output
-        for model in ["gemini-4-neon", "gemini-4-neon-xhigh", "gemini-4-neon-low"] {
-            let cost = gemini_cost(model, "2026-11-25", call).unwrap();
-            assert!((cost - 18.15).abs() < 1e-9, "{model}");
-        }
-        let flash = gemini_cost("gemini-3.8-flash-high", "2026-11-20", call).unwrap();
-        assert!((flash - (0.75 + 0.075 + 3.75)).abs() < 1e-9);
-    }
-
-    #[test]
-    fn gemini_calls_are_priced_at_the_rate_of_their_day() {
-        let call = usage(1_000_000, 0, 0, 1_000_000);
-        let carbon = |date| gemini_cost("gemini-4-carbon", date, call).unwrap();
-        assert!((carbon("2026-11-30") - 12.0).abs() < 1e-9);
-        assert!((carbon("2026-12-01") - 24.0).abs() < 1e-9);
-        assert!((gemini_cost("gemini-4-argon", "2026-12-15", call).unwrap() - 24.0).abs() < 1e-9);
-
-        let flash = |date| gemini_cost("gemini-3.8-flash", date, call).unwrap();
-        assert!((flash("2026-12-31") - 4.5).abs() < 1e-9);
-        assert!((flash("2027-01-01") - 9.0).abs() < 1e-9);
-
-        // gemini-2.5-pro is billed at gemini-3.8-flash rates once requests route there.
-        let small = usage(100_000, 0, 0, 100_000);
-        let pro = |date| gemini_cost("gemini-2.5-pro", date, small).unwrap();
-        assert!((pro("2026-11-30") - (0.125 + 1.0)).abs() < 1e-9);
-        assert!((pro("2026-12-01") - (0.075 + 0.375)).abs() < 1e-9);
-        assert!((pro("2027-01-02") - (0.15 + 0.75)).abs() < 1e-9);
-    }
-
-    #[test]
-    fn gemini_pro_long_prompts_use_the_higher_tier() {
-        let short = gemini_cost(
-            "gemini-3.1-pro-preview",
-            "2026-11-25",
-            usage(100_000, 50_000, 0, 100_000),
-        )
-        .unwrap();
-        assert!((short - (0.2 + 0.01 + 1.2)).abs() < 1e-9);
-
-        // 250k prompt tokens: input and cached input at 2x, output at 1.5x
-        let long_call = usage(150_000, 100_000, 0, 100_000);
-        let long = gemini_cost("gemini-3.1-pro-preview", "2026-11-25", long_call).unwrap();
-        assert!((long - (0.6 + 0.04 + 1.8)).abs() < 1e-9);
-        let parts = estimate_cost_parts(
-            Agent::Antigravity,
-            "gemini-3.1-pro-preview",
-            day("2026-11-25"),
-            long_call,
-        )
-        .unwrap();
-        assert!((parts.cache_read - 0.04).abs() < 1e-12);
-
-        // Flash models have no prompt-size tier.
-        let flash = gemini_cost("gemini-3.8-flash", "2026-11-25", long_call).unwrap();
-        assert!((flash - (0.1125 + 0.0075 + 0.375)).abs() < 1e-9);
-    }
-
-    #[test]
-    fn retired_or_other_vendor_models_under_antigravity_stay_unpriced() {
-        let call = usage(100, 0, 0, 100);
-        assert!(gemini_cost("gemini-3-pro-preview", "2026-01-10", call).is_none());
-        assert!(gemini_cost("gemini-3-pro-preview", "2026-03-09", call).is_some());
-        for model in [
-            "gemini-3.7-flash",
-            "gemini-3.5-flash",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash-preview-09-2025",
-            "gemini-4-neon-preview",
-            "claude-sonnet-4-6",
+        for (model, expected) in [
+            ("gemini-4-neon", 3.0 + 0.15 + 15.0),
+            ("gemini-4-neon-xhigh", 3.0 + 0.15 + 15.0),
+            // Standard prices, not the introductory ones
+            ("gemini-4-carbon-high", 4.0 + 0.2 + 20.0),
+            ("gemini-4-argon", 4.0 + 0.2 + 20.0),
+            ("gemini-4-hydrogen-low", 1.5 + 0.075 + 7.5),
+            ("gemini-3.8-flash-medium", 1.5 + 0.15 + 7.5),
         ] {
-            assert!(gemini_cost(model, "2026-11-25", call).is_none(), "{model}");
+            let cost = estimate_cost(Agent::Antigravity, model, call).unwrap();
+            assert!((cost - expected).abs() < 1e-9, "{model}");
         }
-        assert!(gemini_cost("gemini-3.1-pro-preview-customtools", "2026-11-25", call).is_some());
     }
 
     #[test]
-    fn claude_and_codex_rates_do_not_depend_on_the_call_day() {
-        let call = usage(1_000, 1_000, 0, 1_000);
-        for date in ["2024-01-01", "2026-11-25", "2030-01-01"] {
-            assert_eq!(
-                estimate_cost(Agent::Claude, "claude-sonnet-4-5", day(date), call),
-                estimate_cost(Agent::Claude, "claude-sonnet-4-5", T, call)
-            );
-            assert_eq!(
-                estimate_cost(Agent::Codex, "gpt-5.4", day(date), call),
-                estimate_cost(Agent::Codex, "gpt-5.4", T, call)
+    fn antigravity_claude_models_use_the_claude_table() {
+        let call = usage(1_000_000, 1_000_000, 0, 1_000_000);
+        for model in ["claude-opus-5-5", "claude-opus-5-5-high"] {
+            let cost = estimate_cost(Agent::Antigravity, model, call).unwrap();
+            assert!((cost - (4.0 + 0.2 + 20.0)).abs() < 1e-9, "{model}");
+        }
+        let sonnet = estimate_cost(Agent::Antigravity, "claude-sonnet-5-5-low", call).unwrap();
+        assert!((sonnet - (2.0 + 0.1 + 10.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn other_antigravity_models_stay_unpriced() {
+        for model in [
+            "gpt-oss-120b",
+            "gpt-oss-120b-medium",
+            "orchestrator",
+            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-4-neon-preview",
+            "claude-unknown-9",
+        ] {
+            assert!(
+                estimate_cost(Agent::Antigravity, model, usage(100, 0, 0, 100)).is_none(),
+                "{model}"
             );
         }
+        // Gemini IDs are only priced for Antigravity calls.
+        assert!(estimate_cost(Agent::Codex, "gemini-4-neon", usage(100, 0, 0, 100)).is_none());
     }
 }

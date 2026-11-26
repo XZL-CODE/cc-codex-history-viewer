@@ -20,7 +20,7 @@ Antigravity CLI（`agy`）接替；企业授权与付费 API key 用户仍可使
   Gemini CLI 的 `tmp/<项目>/chats/` 会话文件、`.project_root` 与 `projects.json`。不读 SQLite 与 protobuf。理由：
   正文、模型与 Token 在纯文本里都有；二进制格式没有文档、不开源，随时可能变。若工具结果只存在数据库里，另行讨论。
 - 数据目录默认 `~/.gemini`，设置项为 `geminiDataDir`。理由：两个 CLI 共用这个目录。
-- Gemini 模型暂不定价：Token 照常统计，成本按未知定价模型处理。理由：用户确认这次不加价格表。
+- Gemini 模型暂不定价：Token 照常统计，成本按未知定价模型处理。理由：用户确认这次不加价格表。待裁定 → [Note](../proposed/2026-11-26-gemini-pricing.md)
 - 推理档位只取记录里的原值，不从模型名后缀（如 `gemini-3.8-flash-high`）拆出档位，模型名原样显示。理由：沿用
   [推理档位 Note](./2026-11-19-usage-reasoning-effort.md) 的原值规则。
 - Gemini CLI 的 Token 归一：缓存读 = `cached`；非缓存输入 = `input − cached + tool`；输出 = `output + thoughts`，其中

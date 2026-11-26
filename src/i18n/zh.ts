@@ -190,7 +190,7 @@ export const zh = {
   costNoteAll:
     "显示可可靠匹配价格的 API 等价估算；Codex 与 Antigravity 金额不代表订阅实际支出",
   costNoteAntigravity:
-    "按调用当天的 Gemini API 标准价估算，不代表 Google AI 订阅实际支出；其他厂商的模型不计价",
+    "按 Gemini 与 Claude 的 API 原价估算，不代表 Google AI 订阅实际支出；GPT-OSS 等未知价格的模型不计入",
   unknownModelNote: "另有 {value} tokens 来自未知定价模型，未计入成本",
   dailyCost: "每日 Token 与成本",
   byModel: "按模型",
