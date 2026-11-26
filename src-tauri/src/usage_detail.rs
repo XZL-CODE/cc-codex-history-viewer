@@ -49,7 +49,8 @@ pub fn attach_usage_breakdown(detail: &mut ConversationDetail, calls: &[(&UsageE
         let Some(usage) = message.usage.as_mut() else {
             continue;
         };
-        usage.est_cost_usd = pricing::estimate_cost(agent, &usage.model, usage.usage);
+        usage.est_cost_usd =
+            pricing::estimate_cost(agent, &usage.model, message.timestamp, usage.usage);
         usage.attributed = owned.contains(usage.call_key.as_str());
         if !usage.attributed {
             unattributed_calls += 1;
@@ -61,8 +62,9 @@ pub fn attach_usage_breakdown(detail: &mut ConversationDetail, calls: &[(&UsageE
     let mut est_cost_no_cache_usd = 0.0;
     let mut timeline = Vec::with_capacity(calls.len());
     for (entry, subagent) in calls {
-        let parts = pricing::estimate_cost_parts(agent, &entry.model, entry.usage);
-        let no_cache = pricing::estimate_cost_without_cache(agent, &entry.model, entry.usage);
+        let parts = pricing::estimate_cost_parts(agent, &entry.model, entry.timestamp, entry.usage);
+        let no_cache =
+            pricing::estimate_cost_without_cache(agent, &entry.model, entry.timestamp, entry.usage);
         let aggregate = by_model
             .entry((entry.model.as_str(), entry.effort.as_deref()))
             .or_default();

@@ -216,12 +216,11 @@ fn index_resolves_projects_rolls_up_subagents_and_merges_prompts() {
     assert_eq!(gemini_calls.len(), 3);
     let usage = &index.session_usage[&(Agent::Antigravity, MAIN.to_string())];
     assert_eq!(usage.assistant_messages, 7);
-    // Not priced yet.
-    assert_eq!(usage.est_cost_usd, 0.0);
-    assert_eq!(
-        usage.unknown_model_tokens,
-        usage.total_tokens_including_cache
-    );
+    // Gemini calls are priced at Gemini 3.8 Flash's 2026-11 rates (effort suffix stripped):
+    // 30,857 uncached at 0.75 + 17,739 cached at 0.075 + 970 output at 3.75 per million.
+    // The Claude call made through Antigravity stays unpriced.
+    assert!((usage.est_cost_usd - 0.028110675).abs() < 1e-12);
+    assert_eq!(usage.unknown_model_tokens, 14_271 + 191);
 
     // History lines without a conversation ID merge with the transcript's prompts.
     let read = index

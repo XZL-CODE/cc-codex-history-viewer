@@ -1323,7 +1323,8 @@ fn attribute_session_usage(
             }
             ownership.owner[index] = slot;
             ownership.subagent[index] = result.is_subagent;
-            let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
+            let cost =
+                pricing::estimate_cost(event.agent, &event.model, event.timestamp, event.usage);
             aggregates
                 .entry((result.agent, owner.clone()))
                 .or_default()
@@ -1378,7 +1379,7 @@ fn compute_usage(
         .filter(|event| filter.includes(event.agent))
         .filter(|event| in_range(event.timestamp, range))
     {
-        let cost = pricing::estimate_cost(event.agent, &event.model, event.usage);
+        let cost = pricing::estimate_cost(event.agent, &event.model, event.timestamp, event.usage);
         total.add_assign(event.usage);
         assistant_messages += 1;
         match cost {
